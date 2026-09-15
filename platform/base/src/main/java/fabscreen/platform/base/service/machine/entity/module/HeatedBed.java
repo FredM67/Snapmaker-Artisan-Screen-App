@@ -1,5 +1,7 @@
 package fabscreen.platform.base.service.machine.entity.module;
 
+import android.os.SystemClock;
+
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -8,6 +10,7 @@ import fabscreen.platform.base.R;
 import fabscreen.platform.base.service.IMachine;
 import fabscreen.platform.base.service.machine.IStructure;
 import fabscreen.platform.base.service.machine.MachineConnectionController;
+import fabscreen.platform.base.service.machine.TelemetryFreshness;
 import fabscreen.platform.base.service.machine.entity.Module;
 import fabscreen.platform.base.service.machine.structure.BaseStructure;
 import fabscreen.platform.base.service.machine.structure.ResponseStructure;
@@ -29,6 +32,9 @@ public class HeatedBed extends Module {
     private BehaviorSubject<HeatedBedStatus> mStatusSubject = BehaviorSubject.createDefault(new HeatedBedStatus());
     private SubjectHolder<HeatedBedStatus> mHeatedBedStatusSubjectHolder = new SubjectHolder<>(mStatusSubject);
     private CompositeDisposable mDisposables = new CompositeDisposable();
+    private volatile boolean mHasLiveStatus;
+    private volatile long mStatusUpdatedAt;
+    private volatile long mStatusUpdatedAtElapsedRealtime;
 
     public HeatedBed(ModuleInfo info, IMachine mc, MachineConnectionController cc) {
         super(info, mc, cc);
@@ -60,9 +66,7 @@ public class HeatedBed extends Module {
         responseStructure2.dataProp.zoneInfoArrayProp.addElement(new ZoneInfo());
 
         subscribe = mConnectionController.watch(0x14, 0xa0, responseStructure2)
-                .subscribe(response -> {
-                    mStatusSubject.onNext(response.dataProp);
-                });
+                .subscribe(this::publishStatus);
         mDisposables.add(subscribe);
     }
 
@@ -86,11 +90,40 @@ public class HeatedBed extends Module {
         responseStructure.dataProp.zoneInfoArrayProp.addElement(new ZoneInfo());
         // FIXME: 2022/1/27 request multiple times
         return mConnectionController.request(0x14, 0x01, heatedBedRequest, responseStructure)
-                .doOnNext(response -> {
-                    if (response.isSuccess()) {
-                        mStatusSubject.onNext(response.dataProp);
-                    }
-                });
+                .doOnNext(this::publishStatus);
+    }
+
+    /** True only after telemetry was received successfully from this physical heated bed. */
+    public boolean hasLiveHeatedBedStatus() {
+        return mHasLiveStatus;
+    }
+
+    public long getHeatedBedStatusUpdatedAt() {
+        return mStatusUpdatedAt;
+    }
+
+    /** Uses the monotonic clock so wall-clock changes cannot make stale telemetry look fresh. */
+    public boolean isHeatedBedStatusFresh(long maximumAgeMs) {
+        return TelemetryFreshness.isFresh(
+                mHasLiveStatus,
+                mStatusUpdatedAtElapsedRealtime,
+                SystemClock.elapsedRealtime(),
+                maximumAgeMs
+        );
+    }
+
+    private boolean publishStatus(ResponseStructure<HeatedBedStatus> response) {
+        if (response == null || !response.isSuccess() || response.dataProp == null) {
+            return false;
+        }
+        if (response.dataProp.getKey() != getModuleInfo().getKey()) {
+            return false;
+        }
+        mStatusUpdatedAt = System.currentTimeMillis();
+        mStatusUpdatedAtElapsedRealtime = SystemClock.elapsedRealtime();
+        mHasLiveStatus = true;
+        mStatusSubject.onNext(response.dataProp);
+        return true;
     }
 
     @Deprecated

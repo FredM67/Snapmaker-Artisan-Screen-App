@@ -1,5 +1,7 @@
 package fabscreen.platform.base.service.machine.entity.toolhead;
 
+import android.os.SystemClock;
+
 import com.orhanobut.logger.Logger;
 
 import java.io.IOException;
@@ -9,6 +11,7 @@ import fabscreen.platform.base.R;
 import fabscreen.platform.base.service.IMachine;
 import fabscreen.platform.base.service.machine.IStructure;
 import fabscreen.platform.base.service.machine.MachineConnectionController;
+import fabscreen.platform.base.service.machine.TelemetryFreshness;
 import fabscreen.platform.base.service.machine.entity.Toolhead;
 import fabscreen.platform.base.service.machine.entity.parts.Extruder;
 import fabscreen.platform.base.service.machine.entity.parts.Fan;
@@ -31,6 +34,12 @@ public class FdmToolhead extends Toolhead {
     private SubjectHolder<FdmToolheadStatus> mToolheadStatusSubjectHolder = new SubjectHolder<>(mToolHeadStatusSubject);
     private CompositeDisposable mDisposables = new CompositeDisposable();
     private ModuleInfo mModuleInfo;
+    private volatile boolean mHasLiveExtruderStatus;
+    private volatile long mExtruderStatusUpdatedAt;
+    private volatile long mExtruderStatusUpdatedAtElapsedRealtime;
+    private volatile boolean mHasLiveFanStatus;
+    private volatile long mFanStatusUpdatedAt;
+    private volatile long mFanStatusUpdatedAtElapsedRealtime;
 
     public FdmToolhead(ModuleInfo moduleInfo, IMachine mc, MachineConnectionController cc) {
         super(moduleInfo, mc, cc);
@@ -54,12 +63,14 @@ public class FdmToolhead extends Toolhead {
         iStructureResponseStructure.dataProp = baseStructure;
 
         subscribe = mConnectionController.watch(0x10, 0xa0, iStructureResponseStructure).subscribe(response -> {
+            if (response == null || !response.isSuccess() || response.dataProp == null) return;
             BaseStructure responseStructure = (BaseStructure) response.dataProp;
             int key = ((UInt8Prop) responseStructure.getProp("key")).getValue();
             if (key == mModuleInfo.getKey()) {
                 FdmToolheadStatus value = mToolHeadStatusSubject.getValue();
+                value.setId(key);
                 value.setExtruderList(((ArrayProp<Extruder>) responseStructure.getProp("extruders")).getValue());
-                mToolHeadStatusSubject.onNext(value);
+                publishExtruderStatus(value);
             }
         });
         mDisposables.add(subscribe);
@@ -76,12 +87,14 @@ public class FdmToolhead extends Toolhead {
         iStructureResponseStructure1.dataProp = baseStructure1;
 
         subscribe = mConnectionController.watch(0x10, 0xa3, iStructureResponseStructure1).subscribe(response -> {
+            if (response == null || !response.isSuccess() || response.dataProp == null) return;
             BaseStructure responseStructure = (BaseStructure) response.dataProp;
             int key = ((UInt8Prop) responseStructure.getProp("key")).getValue();
             if (key == mModuleInfo.getKey()) {
                 FdmToolheadStatus value = mToolHeadStatusSubject.getValue();
+                value.setId(key);
                 value.setFanList(((ArrayProp<Fan>) responseStructure.getProp("fans")).getValue());
-                mToolHeadStatusSubject.onNext(value);
+                publishFanStatus(value);
             }
         });
         mDisposables.add(subscribe);
@@ -112,10 +125,7 @@ public class FdmToolhead extends Toolhead {
         ResponseStructure<FdmToolheadStatus> fdmResponse = new ResponseStructure<>();
         fdmResponse.dataProp = new FdmToolheadStatus();
         return mConnectionController.request(0x10, 0x01, fdmRequest, fdmResponse)
-                .doOnNext(responseStructure -> {
-                    if (responseStructure.isSuccess())
-                        mToolHeadStatusSubject.onNext(responseStructure.dataProp);
-                });
+                .doOnNext(this::publishStatus);
     }
 
 
@@ -148,9 +158,108 @@ public class FdmToolhead extends Toolhead {
         return mToolheadStatusSubjectHolder;
     }
 
+    /** True only after telemetry was received successfully from this physical toolhead. */
+    public boolean hasLiveToolheadStatus() {
+        return mHasLiveExtruderStatus || mHasLiveFanStatus;
+    }
+
+    public long getToolheadStatusUpdatedAt() {
+        return Math.max(mExtruderStatusUpdatedAt, mFanStatusUpdatedAt);
+    }
+
+    public boolean hasLiveExtruderStatus() {
+        return mHasLiveExtruderStatus;
+    }
+
+    public long getExtruderStatusUpdatedAt() {
+        return mExtruderStatusUpdatedAt;
+    }
+
+    /** Uses the monotonic clock so wall-clock changes cannot make stale telemetry look fresh. */
+    public boolean isExtruderStatusFresh(long maximumAgeMs) {
+        return isFresh(
+                mHasLiveExtruderStatus,
+                mExtruderStatusUpdatedAtElapsedRealtime,
+                maximumAgeMs
+        );
+    }
+
+    public boolean hasLiveFanStatus() {
+        return mHasLiveFanStatus;
+    }
+
+    public long getFanStatusUpdatedAt() {
+        return mFanStatusUpdatedAt;
+    }
+
+    /** Uses the monotonic clock so wall-clock changes cannot make stale telemetry look fresh. */
+    public boolean isFanStatusFresh(long maximumAgeMs) {
+        return isFresh(mHasLiveFanStatus, mFanStatusUpdatedAtElapsedRealtime, maximumAgeMs);
+    }
+
+    /** True if at least one toolhead telemetry stream is fresh. */
+    public boolean isToolheadStatusFresh(long maximumAgeMs) {
+        return isExtruderStatusFresh(maximumAgeMs) || isFanStatusFresh(maximumAgeMs);
+    }
+
+    private boolean isFresh(boolean hasLiveStatus, long updatedAt, long maximumAgeMs) {
+        return TelemetryFreshness.isFresh(
+                hasLiveStatus,
+                updatedAt,
+                SystemClock.elapsedRealtime(),
+                maximumAgeMs
+        );
+    }
+
+    private boolean publishStatus(ResponseStructure<FdmToolheadStatus> response) {
+        if (response == null || !response.isSuccess() || response.dataProp == null) {
+            return false;
+        }
+        if (response.dataProp.getId() != mModuleInfo.getKey()) {
+            return false;
+        }
+        FdmToolheadStatus status = response.dataProp;
+        long wallTime = System.currentTimeMillis();
+        long elapsedTime = SystemClock.elapsedRealtime();
+        if (status.getExtruderList() != null) {
+            mExtruderStatusUpdatedAt = wallTime;
+            mExtruderStatusUpdatedAtElapsedRealtime = elapsedTime;
+            mHasLiveExtruderStatus = true;
+        }
+        if (status.getFanList() != null) {
+            mFanStatusUpdatedAt = wallTime;
+            mFanStatusUpdatedAtElapsedRealtime = elapsedTime;
+            mHasLiveFanStatus = true;
+        }
+        mToolHeadStatusSubject.onNext(status);
+        return true;
+    }
+
+    private void publishExtruderStatus(FdmToolheadStatus status) {
+        if (status == null) return;
+        mExtruderStatusUpdatedAt = System.currentTimeMillis();
+        mExtruderStatusUpdatedAtElapsedRealtime = SystemClock.elapsedRealtime();
+        mHasLiveExtruderStatus = true;
+        mToolHeadStatusSubject.onNext(status);
+    }
+
+    private void publishFanStatus(FdmToolheadStatus status) {
+        if (status == null) return;
+        mFanStatusUpdatedAt = System.currentTimeMillis();
+        mFanStatusUpdatedAtElapsedRealtime = SystemClock.elapsedRealtime();
+        mHasLiveFanStatus = true;
+        mToolHeadStatusSubject.onNext(status);
+    }
+
     @Override
     public void reset() {
         mDisposables.clear();
+        mHasLiveExtruderStatus = false;
+        mExtruderStatusUpdatedAt = 0L;
+        mExtruderStatusUpdatedAtElapsedRealtime = 0L;
+        mHasLiveFanStatus = false;
+        mFanStatusUpdatedAt = 0L;
+        mFanStatusUpdatedAtElapsedRealtime = 0L;
     }
 
     public static class FdmToolheadStatus implements IStructure {

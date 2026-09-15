@@ -39,6 +39,10 @@ import java.util.Map;
 
 public class FabStandardMultipartResolver implements FabMultipartResolver {
 
+    private static final long MAX_MULTIPART_FILE_BYTES = 1024L * 1024L * 1024L;
+    private static final long MAX_MULTIPART_REQUEST_BYTES =
+            MAX_MULTIPART_FILE_BYTES + (2L * 1024L * 1024L);
+
     private DiskFileItemFactory mFileItemFactory;
     private FileUpload mFileUpload;
 
@@ -46,6 +50,11 @@ public class FabStandardMultipartResolver implements FabMultipartResolver {
         this.mFileItemFactory = new DiskFileItemFactory();
         this.mFileItemFactory.setRepository(new File(context.getCacheDir(), "andserver_upload"));
         this.mFileUpload = new FileUpload(mFileItemFactory);
+        // AndServer resolves multipart bodies before handler authentication and
+        // validation. Enforce the limit while Commons FileUpload is streaming
+        // so a client cannot stage an unbounded body in app storage first.
+        this.mFileUpload.setFileSizeMax(MAX_MULTIPART_FILE_BYTES);
+        this.mFileUpload.setSizeMax(MAX_MULTIPART_REQUEST_BYTES);
     }
 
     public void setProgressListener(ProgressListener listener) {

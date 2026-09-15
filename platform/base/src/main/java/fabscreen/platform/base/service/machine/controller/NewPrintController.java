@@ -42,6 +42,7 @@ import fabscreen.platform.base.service.IAppService;
 import fabscreen.platform.base.service.IMachine;
 import fabscreen.platform.base.service.IPreferences;
 import fabscreen.platform.base.service.machine.MachineConnectionController;
+import fabscreen.platform.base.service.machine.MachineStatus;
 import fabscreen.platform.base.service.machine.Vector;
 import fabscreen.platform.base.service.machine.entity.module.Enclosure;
 import fabscreen.platform.base.service.machine.structure.BaseStructure;
@@ -89,6 +90,14 @@ public class NewPrintController implements IServiceIdentifier {
 
     private boolean mRecoveryFlag = false;
     private boolean mStartFromRemoteFlag = false;
+    private boolean mAttachStartedRemotePrintFlag;
+    private final Object mPrintPreparationReservationLock = new Object();
+    private long mNextPrintPreparationLease;
+    private long mPrintPreparationLease;
+    private boolean mPrintPreparationStarting;
+    private boolean mPrintStartAcceptedAwaitingNonIdle;
+    private boolean mPrintStartOutcomeUncertain;
+    private final ThreadLocal<Long> mPrintPreparationMutationLease = new ThreadLocal<>();
     private String mFileName = "";
 
     private final int BATCHES_NUMS = 3;
@@ -141,6 +150,12 @@ public class NewPrintController implements IServiceIdentifier {
         mGetMachineStatusSubscribe = mc.getMachineStatusSubjectHolder()
                 .getObservable()
                 .subscribe(machineStatus -> {
+                    if (machineStatus.status
+                            != MachineOperationStatus.SYSTEM_STATUS_IDLE.value()) {
+                        synchronized (mPrintPreparationReservationLock) {
+                            mPrintStartAcceptedAwaitingNonIdle = false;
+                        }
+                    }
                     if (mMachineStatusSubject.getValue() != machineStatus.status) {
                         mMachineStatusSubject.onNext(machineStatus.status);
                     }
@@ -294,9 +309,23 @@ public class NewPrintController implements IServiceIdentifier {
     }
 
     public boolean start() {
+        return startInternal(0L);
+    }
+
+    public boolean start(long preparationLease) {
+        if (preparationLease <= 0L) return false;
+        return startInternal(preparationLease);
+    }
+
+    private boolean startInternal(long preparationLease) {
         Logger.i("Start print.");
+        if (!claimPrintPreparationForStart(preparationLease)) return false;
         final long actionGeneration = beginAction(ACTION_START);
-        if (actionGeneration == 0) return false;
+        if (actionGeneration == 0) {
+            releasePrintPreparationStartClaim(preparationLease, false);
+            return false;
+        }
+        consumePrintPreparationLeaseForStart(preparationLease);
         try {
             prepare();
             IPrintWorkspace workspace = ServiceContainer.getInstance().getService(IPrintWorkspace.class);
@@ -316,10 +345,14 @@ public class NewPrintController implements IServiceIdentifier {
                 .timeout(20, TimeUnit.SECONDS)
                 .take(1)
                 .observeOn(AndroidSchedulers.mainThread())
-                .doFinally(() -> finishAction(ACTION_START, actionGeneration))
+                .doFinally(() -> {
+                    finishAction(ACTION_START, actionGeneration);
+                    finishPrintPreparationStart();
+                })
                 .subscribe(responseStructure -> {
                     if (responseStructure.isSuccess()) {
                         Logger.i("Print started.");
+                        markPrintStartAcceptedSettling();
                         // Clear the flag bit of remote start printing after the printing starts
                         mStartFromRemoteFlag = false;
                         mPrintEventSubject.onNext(new PrintEvent(STATE_SUCCESS, 0));
@@ -338,6 +371,7 @@ public class NewPrintController implements IServiceIdentifier {
                     }
                 }, e -> {
                     LogHelper.log(e);
+                    markPrintStartOutcomeUncertain();
                     // If 0 is launched, it means that there is a problem with the screen program,
                     // which has nothing to do with the nature of the machine itself
                     mPrintEventSubject.onNext(new PrintEvent(FINISH_FAIL, 0));
@@ -348,7 +382,9 @@ public class NewPrintController implements IServiceIdentifier {
         setActionDisposable(ACTION_START, actionGeneration, sub);
         return true;
         } catch (RuntimeException e) {
-            return failActionSetup(ACTION_START, actionGeneration, START_FAIL, e);
+            markPrintStartOutcomeUncertain();
+            finishPrintPreparationStart();
+            return failActionSetup(ACTION_START, actionGeneration, FINISH_FAIL, e);
         }
     }
 
@@ -531,6 +567,14 @@ public class NewPrintController implements IServiceIdentifier {
     }
 
     public void reset() {
+        if (!isPrintWorkspaceMutationAllowed()) {
+            Logger.w("Ignored print-controller reset while another preparation owns the lease.");
+            return;
+        }
+        resetInternal();
+    }
+
+    private void resetInternal() {
         mCurrentProgressSubject.onNext(0f);
         mGcodePlayer.reset();
         mPrintEventSubject.onComplete();
@@ -1027,6 +1071,180 @@ public class NewPrintController implements IServiceIdentifier {
         mStartFromRemoteFlag = removePrintFlag;
     }
 
+    public long tryAcquirePrintPreparationLease() {
+        synchronized (mPrintPreparationReservationLock) {
+            if (mPrintPreparationLease != 0L
+                    || mPrintPreparationStarting
+                    || mPrintStartAcceptedAwaitingNonIdle
+                    || mPrintStartOutcomeUncertain) return 0L;
+            long lease = ++mNextPrintPreparationLease;
+            if (lease <= 0L) {
+                mNextPrintPreparationLease = 1L;
+                lease = 1L;
+            }
+            mPrintPreparationLease = lease;
+            return lease;
+        }
+    }
+
+    public void abortPrintPreparation(long lease) {
+        if (lease <= 0L) return;
+        synchronized (mPrintPreparationReservationLock) {
+            if (!mPrintPreparationStarting && mPrintPreparationLease == lease) {
+                mPrintPreparationLease = 0L;
+            }
+        }
+    }
+
+    public boolean isPrintPreparationReserved() {
+        synchronized (mPrintPreparationReservationLock) {
+            return mPrintPreparationLease != 0L
+                    || mPrintPreparationStarting
+                    || mPrintStartAcceptedAwaitingNonIdle
+                    || mPrintStartOutcomeUncertain;
+        }
+    }
+
+    public boolean runWithPrintPreparationLease(long lease, Runnable mutation) {
+        if (lease <= 0L || mutation == null) return false;
+        synchronized (mPrintPreparationReservationLock) {
+            if (mPrintPreparationStarting
+                    || mPrintStartAcceptedAwaitingNonIdle
+                    || mPrintStartOutcomeUncertain
+                    || mPrintPreparationLease != lease) return false;
+            mPrintPreparationMutationLease.set(lease);
+            try {
+                mutation.run();
+                return true;
+            } finally {
+                mPrintPreparationMutationLease.remove();
+            }
+        }
+    }
+
+    public boolean isPrintWorkspaceMutationAllowed() {
+        synchronized (mPrintPreparationReservationLock) {
+            if (mPrintPreparationLease == 0L
+                    && !mPrintPreparationStarting
+                    && !mPrintStartAcceptedAwaitingNonIdle
+                    && !mPrintStartOutcomeUncertain) return true;
+            Long permittedLease = mPrintPreparationMutationLease.get();
+            return !mPrintPreparationStarting
+                    && !mPrintStartAcceptedAwaitingNonIdle
+                    && !mPrintStartOutcomeUncertain
+                    && permittedLease != null
+                    && permittedLease == mPrintPreparationLease;
+        }
+    }
+
+    public Observable<PrintEvent> preparePrintStart(
+            long lease,
+            IFile file,
+            int totalLines
+    ) {
+        if (lease <= 0L || file == null || totalLines <= 0) return null;
+        synchronized (mPrintPreparationReservationLock) {
+            if (mPrintPreparationStarting
+                    || mPrintStartAcceptedAwaitingNonIdle
+                    || mPrintStartOutcomeUncertain
+                    || mPrintPreparationLease != lease) return null;
+            mPrintPreparationMutationLease.set(lease);
+            try {
+                resetInternal();
+                mGcodePlayer.setGcodeFile(file);
+                mGcodePlayer.setTotalCount(totalLines);
+                return mPrintEventSubject.hide();
+            } finally {
+                mPrintPreparationMutationLease.remove();
+            }
+        }
+    }
+
+    public boolean runPrintWorkspaceMutation(Runnable mutation) {
+        if (mutation == null) return false;
+        synchronized (mPrintPreparationReservationLock) {
+            if (mPrintPreparationLease != 0L
+                    || mPrintPreparationStarting
+                    || mPrintStartAcceptedAwaitingNonIdle
+                    || mPrintStartOutcomeUncertain) {
+                Long permittedLease = mPrintPreparationMutationLease.get();
+                if (mPrintPreparationStarting
+                        || mPrintStartAcceptedAwaitingNonIdle
+                        || mPrintStartOutcomeUncertain
+                        || permittedLease == null
+                        || permittedLease != mPrintPreparationLease) return false;
+            }
+            mutation.run();
+            return true;
+        }
+    }
+
+    private boolean claimPrintPreparationForStart(long lease) {
+        synchronized (mPrintPreparationReservationLock) {
+            if (mPrintPreparationStarting
+                    || mPrintStartAcceptedAwaitingNonIdle
+                    || mPrintStartOutcomeUncertain) return false;
+            if (lease == 0L) {
+                if (mPrintPreparationLease != 0L) return false;
+            } else if (mPrintPreparationLease != lease) {
+                return false;
+            }
+            mPrintPreparationStarting = true;
+            return true;
+        }
+    }
+
+    private void releasePrintPreparationStartClaim(long lease, boolean consume) {
+        synchronized (mPrintPreparationReservationLock) {
+            if (consume && lease > 0L && mPrintPreparationLease == lease) {
+                mPrintPreparationLease = 0L;
+            }
+            mPrintPreparationStarting = false;
+        }
+    }
+
+    private void consumePrintPreparationLeaseForStart(long lease) {
+        synchronized (mPrintPreparationReservationLock) {
+            if (lease > 0L && mPrintPreparationLease == lease) {
+                mPrintPreparationLease = 0L;
+            }
+        }
+    }
+
+    private void finishPrintPreparationStart() {
+        synchronized (mPrintPreparationReservationLock) {
+            mPrintPreparationStarting = false;
+        }
+    }
+
+    private void markPrintStartAcceptedSettling() {
+        synchronized (mPrintPreparationReservationLock) {
+            MachineStatus latestStatus = mMachine.getMachineStatusSubjectHolder().getValue();
+            // A successful START response and the independently reported machine state can
+            // arrive in either order. Keep all workspace preparation/reset paths closed only
+            // while the cached status is still IDLE; the status observer releases this gate
+            // as soon as it sees the first non-IDLE state.
+            mPrintStartAcceptedAwaitingNonIdle = latestStatus == null
+                    || latestStatus.status == MachineOperationStatus.SYSTEM_STATUS_IDLE.value();
+        }
+    }
+
+    public void markPrintStartOutcomeUncertain() {
+        synchronized (mPrintPreparationReservationLock) {
+            // A START request may already be active in firmware even when its result was
+            // lost. There is no request correlation that can prove otherwise, so prevent
+            // all subsequent workspace/player replacement until this controller is
+            // recreated with the HMI process.
+            mPrintStartOutcomeUncertain = true;
+        }
+    }
+
+    public boolean isPrintStartOutcomeUncertain() {
+        synchronized (mPrintPreparationReservationLock) {
+            return mPrintStartOutcomeUncertain;
+        }
+    }
+
     public int getPrintState() {
         return mMachineStatusSubject.getValue();
     }
@@ -1044,7 +1262,7 @@ public class NewPrintController implements IServiceIdentifier {
     }
 
     public void setFile(IFile file) {
-        mGcodePlayer.setGcodeFile(file);
+        runPrintWorkspaceMutation(() -> mGcodePlayer.setGcodeFile(file));
     }
 
     public int getTotalLines() {
@@ -1052,7 +1270,21 @@ public class NewPrintController implements IServiceIdentifier {
     }
 
     public void setTotalLines(int lines) {
-        mGcodePlayer.setTotalCount(lines);
+        runPrintWorkspaceMutation(() -> mGcodePlayer.setTotalCount(lines));
+    }
+
+    public void markAttachStartedRemotePrint() {
+        mAttachStartedRemotePrintFlag = true;
+    }
+
+    public boolean consumeAttachStartedRemotePrint() {
+        boolean attach = mAttachStartedRemotePrintFlag;
+        mAttachStartedRemotePrintFlag = false;
+        return attach;
+    }
+
+    public boolean hasAttachStartedRemotePrint() {
+        return mAttachStartedRemotePrintFlag;
     }
 
     public boolean getRecoveryFlag() {

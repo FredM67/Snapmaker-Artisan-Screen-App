@@ -527,6 +527,31 @@ public class SnapmakerParser implements IGcodeParser {
     }
 
     @Override
+    public String getLastSha256ForAnalysis() {
+        return null;
+    }
+
+    @Override
+    public String getLastMd5ForAnalysis() {
+        return null;
+    }
+
+    @Override
+    public boolean isToolUsageConfirmed() {
+        return false;
+    }
+
+    @Override
+    public boolean isTool0Used() {
+        return true;
+    }
+
+    @Override
+    public boolean isTool1Used() {
+        return isApplyMultiExtruder();
+    }
+
+    @Override
     public boolean isApplyMultiExtruder() {
         return false;
     }

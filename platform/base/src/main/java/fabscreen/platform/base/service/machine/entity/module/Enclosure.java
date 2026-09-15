@@ -1,5 +1,7 @@
 package fabscreen.platform.base.service.machine.entity.module;
 
+import android.os.SystemClock;
+
 import com.orhanobut.logger.Logger;
 
 import java.io.IOException;
@@ -11,6 +13,7 @@ import fabscreen.platform.base.service.IAppService;
 import fabscreen.platform.base.service.IMachine;
 import fabscreen.platform.base.service.machine.IStructure;
 import fabscreen.platform.base.service.machine.MachineConnectionController;
+import fabscreen.platform.base.service.machine.TelemetryFreshness;
 import fabscreen.platform.base.service.machine.entity.Module;
 import fabscreen.platform.base.service.machine.structure.BaseStructure;
 import fabscreen.platform.base.service.machine.structure.OpenDoorDetectionState;
@@ -34,6 +37,9 @@ public class Enclosure extends Module {
     private final SubjectHolder<EnclosureStatus> mEnclosureStatusSubjectHolder = new SubjectHolder<>(mStatusSubject);
     private final CompositeDisposable mDisposables = new CompositeDisposable();
     IAppService mAppService;
+    private volatile boolean mHasLiveStatus;
+    private volatile long mStatusUpdatedAt;
+    private volatile long mStatusUpdatedAtElapsedRealtime;
 
     private int mPowerState = -1;
     private int mCutterState = -1;
@@ -48,14 +54,11 @@ public class Enclosure extends Module {
     @Override
     public void init() {
         Logger.d("Enclosure module initialization start.");
-        mDisposables.add(setEnclosureLedLevel(100).subscribe(response -> {/**/}, LogHelper::log));
-
         mDisposables.add(requestInfo().subscribe(response -> {/**/}, LogHelper::log));
 
         mDisposables.add(mConnectionController.watch(0x15, 0xa0, new ResponseStructure<>(new EnclosureStatus()))
                 .subscribe(response -> {
-                    if (response.isSuccess() && response.dataProp.getKey() == getModuleInfo().getKey()) {
-                        mStatusSubject.onNext(response.dataProp);
+                    if (publishStatus(response)) {
 
                         mCutterState = response.dataProp.isDoorOpenProp.getValue() ? ON_TYPE : OFF_TYPE;
                         if (mPowerState != -1 && mPowerState == mCutterState) {
@@ -87,7 +90,7 @@ public class Enclosure extends Module {
         };
         Request.getProp("key").setValue(getModuleInfo().getKey());
         return mConnectionController.request(0x15, 0x01, Request, new ResponseStructure<>(new EnclosureStatus()))
-                .doOnNext(response -> mStatusSubject.onNext(response.dataProp));
+                .doOnNext(this::publishStatus);
     }
 
     public Observable<ResponseStructure> setEnclosureLedLevel(int value) {
@@ -175,6 +178,39 @@ public class Enclosure extends Module {
 
     public EnclosureStatus getEnclosureStatusValue() {
         return mEnclosureStatusSubjectHolder.getValue();
+    }
+
+    /** True only after a successful response from this physical enclosure. */
+    public boolean hasLiveEnclosureStatus() {
+        return mHasLiveStatus;
+    }
+
+    public long getEnclosureStatusUpdatedAt() {
+        return mStatusUpdatedAt;
+    }
+
+    /** Uses the monotonic clock so wall-clock changes cannot make stale telemetry look fresh. */
+    public boolean isEnclosureStatusFresh(long maximumAgeMs) {
+        return TelemetryFreshness.isFresh(
+                mHasLiveStatus,
+                mStatusUpdatedAtElapsedRealtime,
+                SystemClock.elapsedRealtime(),
+                maximumAgeMs
+        );
+    }
+
+    private boolean publishStatus(ResponseStructure<EnclosureStatus> response) {
+        if (response == null
+                || !response.isSuccess()
+                || response.dataProp == null
+                || response.dataProp.getKey() != getModuleInfo().getKey()) {
+            return false;
+        }
+        mStatusUpdatedAt = System.currentTimeMillis();
+        mStatusUpdatedAtElapsedRealtime = SystemClock.elapsedRealtime();
+        mHasLiveStatus = true;
+        mStatusSubject.onNext(response.dataProp);
+        return true;
     }
 
 

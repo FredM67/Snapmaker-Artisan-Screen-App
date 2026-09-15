@@ -53,6 +53,7 @@ import io.reactivex.disposables.Disposable;
 import io.reactivex.functions.Function;
 import io.reactivex.subjects.BehaviorSubject;
 import io.reactivex.subjects.PublishSubject;
+import io.reactivex.subjects.Subject;
 import okio.Buffer;
 
 /**
@@ -74,6 +75,9 @@ public class MachineController {
     private BehaviorSubject<Vector> mRelativeHomeLocation;
     private final CompositeDisposable mDisposables = new CompositeDisposable();
     private PublishSubject<ResponseStructure> mInterruptAutoLevelingSubject;
+    private final Subject<FirmwareLog> mFirmwareLogSubject =
+            PublishSubject.<FirmwareLog>create().toSerialized();
+    private Disposable mFirmwareLogWatchDisposable;
 
     public MachineController(IMachine mc, MachineConnectionController cc, BehaviorSubject<MachineInfo> machineInfoSubject, BehaviorSubject<MachineStatus> statusSubject, IAppService appService) {
         mMachine = mc;
@@ -104,26 +108,35 @@ public class MachineController {
                 }, LogHelper::log));
     }
 
-    private void initControllerLog() {
-        // Log
-        BaseStructure baseStructure = new BaseStructure() {
-            @Override
-            protected void init() {
-                addProp("logLevel", new UInt8Prop());
-                addProp("log", new StringProp());
-            }
-        };
+    private synchronized void initControllerLog() {
+        // Keep one parser/watch registration across reconnects. The controller-side
+        // subscription is still re-issued below after every connection transition.
+        if (mFirmwareLogWatchDisposable == null || mFirmwareLogWatchDisposable.isDisposed()) {
+            BaseStructure baseStructure = new BaseStructure() {
+                @Override
+                protected void init() {
+                    addProp("logLevel", new UInt8Prop());
+                    addProp("log", new StringProp());
+                }
+            };
 
-        ResponseStructure<IStructure> responseStructure = new ResponseStructure<>();
-        responseStructure.dataProp = baseStructure;
-
-        mDisposables.add(mConnectionController.watch(0x01, 0xa1, responseStructure)
-                .subscribe(logResponseStructure -> {
-                    BaseStructure logResponse = (BaseStructure) logResponseStructure.dataProp;
-                    int logLever = (int) logResponse.getProp("logLevel").getValue();
-                    String log = (String) logResponse.getProp("log").getValue();
-                    LogHelper.firmwareLog(logLever, log);
-                }, LogHelper::log));
+            ResponseStructure<IStructure> responseStructure = new ResponseStructure<>();
+            responseStructure.dataProp = baseStructure;
+            mFirmwareLogWatchDisposable = mConnectionController.watch(0x01, 0xa1, responseStructure)
+                    .subscribe(logResponseStructure -> {
+                        BaseStructure logResponse = (BaseStructure) logResponseStructure.dataProp;
+                        int logLevel = (int) logResponse.getProp("logLevel").getValue();
+                        String log = (String) logResponse.getProp("log").getValue();
+                        String copiedLog = log == null ? "" : new String(log);
+                        mFirmwareLogSubject.onNext(new FirmwareLog(
+                                logLevel,
+                                copiedLog,
+                                System.currentTimeMillis()
+                        ));
+                        LogHelper.firmwareLog(logLevel, copiedLog);
+                    }, LogHelper::log);
+            mDisposables.add(mFirmwareLogWatchDisposable);
+        }
 
         SubscribeStructure subStruct = new SubscribeStructure(0x01, 0xa1, 5000);
         ResponseStructure<IStructure> resStruct = new ResponseStructure<>();
@@ -131,6 +144,34 @@ public class MachineController {
                 .flatMap(res -> mConnectionController.request(0x01, 0x00, subStruct, resStruct))
                 .subscribe(response -> {
                 }, LogHelper::log));
+    }
+
+    public Observable<FirmwareLog> getFirmwareLogObservable() {
+        return mFirmwareLogSubject.hide();
+    }
+
+    public static final class FirmwareLog {
+        private final int level;
+        private final String message;
+        private final long timestamp;
+
+        FirmwareLog(int level, String message, long timestamp) {
+            this.level = level;
+            this.message = message;
+            this.timestamp = timestamp;
+        }
+
+        public int getLevel() {
+            return level;
+        }
+
+        public String getMessage() {
+            return message;
+        }
+
+        public long getTimestamp() {
+            return timestamp;
+        }
     }
 
     public void initModules() {

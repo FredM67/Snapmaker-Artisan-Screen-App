@@ -20,6 +20,7 @@ import fabscreen.platform.base.lib.file.IPartition;
 import fabscreen.platform.base.model.ModelBoundary;
 import fabscreen.platform.base.service.IAppService;
 import fabscreen.platform.base.service.IFileManagerService;
+import fabscreen.platform.base.service.IMachine;
 import fabscreen.platform.base.service.IPreferences;
 import fabscreen.platform.lib.LogHelper;
 import io.reactivex.Observable;
@@ -77,7 +78,7 @@ public class BasePrintWorkspace implements IPrintWorkspace, IServiceIdentifier {
 
     @Override
     public void setPrintFile(IFile file) {
-        mPrintFile = file;
+        runWorkspaceMutation(() -> mPrintFile = file);
     }
 
 
@@ -91,7 +92,7 @@ public class BasePrintWorkspace implements IPrintWorkspace, IServiceIdentifier {
 
     @Override
     public void setFileMD5Value(String value) {
-        mPrintFileMD5Value = value;
+        runWorkspaceMutation(() -> mPrintFileMD5Value = value);
     }
 
     @Override
@@ -101,7 +102,7 @@ public class BasePrintWorkspace implements IPrintWorkspace, IServiceIdentifier {
 
     @Override
     public void setPrintMode(int printMode) {
-        mPrintMode = printMode;
+        runWorkspaceMutation(() -> mPrintMode = printMode);
     }
 
     @Override
@@ -111,7 +112,8 @@ public class BasePrintWorkspace implements IPrintWorkspace, IServiceIdentifier {
 
     @Override
     public void setEstimatedTime(float estimatedTime) {
-        mPreferences.getHelper().setPrintFileEstimatedTime(estimatedTime);
+        runWorkspaceMutation(() ->
+                mPreferences.getHelper().setPrintFileEstimatedTime(estimatedTime));
     }
 
     @Override
@@ -121,8 +123,10 @@ public class BasePrintWorkspace implements IPrintWorkspace, IServiceIdentifier {
 
     @Override
     public void setFileTotalLineCount(int totalCount) {
-        Logger.d("Set total line %d in workspace", totalCount);
-        mPreferences.getHelper().setPrintFileTotalLines(totalCount);
+        runWorkspaceMutation(() -> {
+            Logger.d("Set total line %d in workspace", totalCount);
+            mPreferences.getHelper().setPrintFileTotalLines(totalCount);
+        });
     }
 
     @Override
@@ -132,7 +136,7 @@ public class BasePrintWorkspace implements IPrintWorkspace, IServiceIdentifier {
 
     @Override
     public void setPrintSource(int source) {
-        mPreferences.getHelper().setPrintSource(source);
+        runWorkspaceMutation(() -> mPreferences.getHelper().setPrintSource(source));
     }
 
     @Override
@@ -145,6 +149,9 @@ public class BasePrintWorkspace implements IPrintWorkspace, IServiceIdentifier {
 
     @Override
     public Observable<Boolean> addFileToWorkspace(IFile sourceFile) {
+        if (isPrintPreparationReserved()) {
+            return Observable.just(false);
+        }
         // Reset
         if (mCopyFileWorker != null) {
             mCopyFileWorker.dispose();
@@ -175,6 +182,10 @@ public class BasePrintWorkspace implements IPrintWorkspace, IServiceIdentifier {
     }
 
     private void startCopyFile() {
+        if (isPrintPreparationReserved()) {
+            mCopyResultSubject.onNext(false);
+            return;
+        }
         if (mSourceFile instanceof FabUsbFile) {
             IPartition device = ServiceContainer.getInstance().getService(IFileManagerService.class).getDevice(true);
             if (mSourceFile.length() >= device.getTotalSpace()) {
@@ -199,11 +210,11 @@ public class BasePrintWorkspace implements IPrintWorkspace, IServiceIdentifier {
 //            mPrintFile = new FabLocalFile(new File(getWorkspaceDir(), mSourceFile.getName()));
             BufferedSource bufferedSource = null;
             BufferedSink bufferedSink = null;
+            IFile destinationFile = null;
             try {
-                mPrintFile = device.createFile(device.getRootFile(), mSourceFile.getName());
-                mPreferences.getHelper().setPrintFilePath(mPrintFile.getPath());
+                destinationFile = device.createFile(device.getRootFile(), mSourceFile.getName());
                 bufferedSource = Okio.buffer(Okio.source(mSourceFile.getInputStream()));
-                bufferedSink = Okio.buffer(Okio.sink(mPrintFile.getOutputStream()));
+                bufferedSink = Okio.buffer(Okio.sink(destinationFile.getOutputStream()));
                 // copy file from source with buffer
                 int len;
                 byte[] buffer = new byte[20480];
@@ -212,10 +223,19 @@ public class BasePrintWorkspace implements IPrintWorkspace, IServiceIdentifier {
                 }
                 bufferedSink.close();
                 bufferedSource.close();
-                mCopyResultSubject.onNext(true);
+                IFile completedFile = destinationFile;
+                if (runWorkspaceMutation(() -> {
+                    mPrintFile = completedFile;
+                    mPreferences.getHelper().setPrintFilePath(completedFile.getPath());
+                })) {
+                    mCopyResultSubject.onNext(true);
+                } else {
+                    destinationFile.removeFile();
+                    mCopyResultSubject.onNext(false);
+                }
             } catch (Exception e) {
                 try {
-                    mPrintFile.removeFile();
+                    if (destinationFile != null) destinationFile.removeFile();
                 } catch (Exception e1) {
 
                 }
@@ -235,17 +255,52 @@ public class BasePrintWorkspace implements IPrintWorkspace, IServiceIdentifier {
                     LogHelper.log(e);
                 }
                 try {
-                    mPrintFile.setLastModified(mSourceFile.lastModified());
+                    if (destinationFile != null) {
+                        destinationFile.setLastModified(mSourceFile.lastModified());
+                    }
                 } catch (Exception ignored) {
 
                 }
             }
         } else if (mSourceFile instanceof FabLocalFile) {
-            mPrintFile = mSourceFile;
-            mPreferences.getHelper().setPrintFilePath(mPrintFile.getPath());
-            mCopyResultSubject.onNext(true);
+            if (isPrintPreparationReserved()) {
+                mCopyResultSubject.onNext(false);
+                return;
+            }
+            if (runWorkspaceMutation(() -> {
+                mPrintFile = mSourceFile;
+                mPreferences.getHelper().setPrintFilePath(mPrintFile.getPath());
+            })) {
+                mCopyResultSubject.onNext(true);
+            } else {
+                mCopyResultSubject.onNext(false);
+            }
         } else {
             mCopyResultSubject.onNext(false);
+        }
+    }
+
+    private boolean isPrintPreparationReserved() {
+        try {
+            return ServiceContainer.getInstance()
+                    .getService(IMachine.class)
+                    .getNewPrintController()
+                    .isPrintPreparationReserved();
+        } catch (Exception error) {
+            LogHelper.log(error);
+            return true;
+        }
+    }
+
+    private boolean runWorkspaceMutation(Runnable mutation) {
+        try {
+            return ServiceContainer.getInstance()
+                    .getService(IMachine.class)
+                    .getNewPrintController()
+                    .runPrintWorkspaceMutation(mutation);
+        } catch (Exception error) {
+            LogHelper.log(error);
+            return false;
         }
     }
 
@@ -263,7 +318,7 @@ public class BasePrintWorkspace implements IPrintWorkspace, IServiceIdentifier {
 
     @Override
     public void setModelBoundary(ModelBoundary boundary) {
-        mModelBoundary = boundary;
+        runWorkspaceMutation(() -> mModelBoundary = boundary);
     }
 
     @Override
@@ -281,13 +336,15 @@ public class BasePrintWorkspace implements IPrintWorkspace, IServiceIdentifier {
 
     @Override
     public void setWorkTemperature(float[] extruderTargetTemperature) {
-        mExtruderTargetTemperature = extruderTargetTemperature;
+        runWorkspaceMutation(() -> mExtruderTargetTemperature = extruderTargetTemperature);
     }
 
     @Override
     public void setPrintModeXOffset(float xOffset) {
-        Logger.d("set mode xOffset " + xOffset);
-        mPrintModeXOffset = xOffset;
+        runWorkspaceMutation(() -> {
+            Logger.d("set mode xOffset " + xOffset);
+            mPrintModeXOffset = xOffset;
+        });
     }
 
     @Override
@@ -317,7 +374,7 @@ public class BasePrintWorkspace implements IPrintWorkspace, IServiceIdentifier {
 
     @Override
     public void setApplyMultiExtruder(boolean applyMultiExtruder) {
-        mApplyMultiExtruder = applyMultiExtruder;
+        runWorkspaceMutation(() -> mApplyMultiExtruder = applyMultiExtruder);
     }
 
 }

@@ -26,7 +26,10 @@ public class PrintA400Activity extends BaseActivity {
         setContentView(R.layout.activity_print);
         IMachine.WorkType workType = mMachine.getMachineInfoSubjectHolder().getValue().workType;
         NewPrintController newPrintController = ServiceContainer.getInstance().getService(IMachine.class).getNewPrintController();
-        if (isPrinting() || newPrintController.getRecoveryFlag() || newPrintController.getStartFromRemoteFlag()) {
+        if (isPrinting()
+                || newPrintController.getRecoveryFlag()
+                || newPrintController.getStartFromRemoteFlag()
+                || newPrintController.hasAttachStartedRemotePrint()) {
             goToPrint();
         } else {
             // Go to print or prepare page due to the current work type.

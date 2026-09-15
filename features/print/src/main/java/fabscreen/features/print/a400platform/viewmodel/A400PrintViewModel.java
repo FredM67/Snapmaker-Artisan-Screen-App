@@ -127,7 +127,8 @@ public class A400PrintViewModel extends BaseViewModel {
     public void initPrint() {
         mEstimatedTime = mWorkspace.getEstimatedTime();
         boolean isPrinting = MachineOperationStatus.isPrinting(mNewPrintController.getPrintState());
-        if (isPrinting) {
+        boolean attachStartedRemotePrint = mNewPrintController.consumeAttachStartedRemotePrint();
+        if (isPrinting || attachStartedRemotePrint) {
             // Initializing from last printing
             setTimeToUpdateProgress();
         } else {

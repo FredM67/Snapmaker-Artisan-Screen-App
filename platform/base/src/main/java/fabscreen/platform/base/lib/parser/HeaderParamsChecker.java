@@ -25,7 +25,7 @@ public class HeaderParamsChecker {
         return mInstance;
     }
 
-    private HeaderParamsChecker() {
+    HeaderParamsChecker() {
         this.totalLinesCheck = false;
         this.estimatedTimeCheck = false;
         this.nozzleTempCheck = false;

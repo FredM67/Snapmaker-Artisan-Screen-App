@@ -85,6 +85,21 @@ public interface IGcodeParser {
 
     int getCustomPrintMode();
 
+    /** Exact SHA-256 of the complete byte stream, or null until a full successful scan ends. */
+    String getLastSha256ForAnalysis();
+
+    /** Exact MD5 of the complete byte stream, or null until a full successful scan ends. */
+    String getLastMd5ForAnalysis();
+
+    /** True only after the complete executable has been inspected for physical nozzle use. */
+    boolean isToolUsageConfirmed();
+
+    /** Whether the complete job can operate the physical left nozzle. */
+    boolean isTool0Used();
+
+    /** Whether the complete job can operate the physical right nozzle. */
+    boolean isTool1Used();
+
     boolean isApplyMultiExtruder();
 
     float getExtruder0RetractionDistance();

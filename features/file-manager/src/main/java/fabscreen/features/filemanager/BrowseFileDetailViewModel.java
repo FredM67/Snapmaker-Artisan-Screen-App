@@ -180,28 +180,49 @@ public class BrowseFileDetailViewModel extends BaseViewModel {
             }
         }
 
-        if (mParser.getMaterial_0() != null) {
-            str = "L: " + mParser.getMaterial_0();
-            if (mParser.getMaterial_1() != null) {
-                str += " R: " + mParser.getMaterial_1();
+        boolean showLeftNozzle = !mParser.isToolUsageConfirmed() || mParser.isTool0Used();
+        boolean showRightNozzle = !mParser.isToolUsageConfirmed() || mParser.isTool1Used();
+
+        if ((showLeftNozzle && mParser.getMaterial_0() != null)
+                || (showRightNozzle && mParser.getMaterial_1() != null)) {
+            str = "";
+            if (showLeftNozzle && mParser.getMaterial_0() != null) {
+                str = "L: " + mParser.getMaterial_0();
+            }
+            if (showRightNozzle && mParser.getMaterial_1() != null) {
+                str += (str.isEmpty() ? "" : " ") + "R: " + mParser.getMaterial_1();
             }
             detailDescs.add(new DetailDesc(mContext.getString(R.string.all_file_details_filament), str));
         }
 
         if (mHeadToolType == HEAD_3DP || mHeadToolType == HEAD_3DP_DOUBLE_EXTRUDER) {
-            if (mParser.getNozzleTargetTemperature() != 0) {
-                str = "L: " + (int) mParser.getNozzleTargetTemperature() + mContext.getString(R.string.all_unit_temperature);
-                if (mParser.getNozzleTarget_1_Temperature() != 0) {
-                    str += " R: " + (int) mParser.getNozzleTarget_1_Temperature() + mContext.getString(R.string.all_unit_temperature);
+            if ((showLeftNozzle && mParser.getNozzleTargetTemperature() != 0)
+                    || (showRightNozzle && mParser.getNozzleTarget_1_Temperature() != 0)) {
+                str = "";
+                if (showLeftNozzle && mParser.getNozzleTargetTemperature() != 0) {
+                    str = "L: " + (int) mParser.getNozzleTargetTemperature()
+                            + mContext.getString(R.string.all_unit_temperature);
+                }
+                if (showRightNozzle && mParser.getNozzleTarget_1_Temperature() != 0) {
+                    str += (str.isEmpty() ? "" : " ") + "R: "
+                            + (int) mParser.getNozzleTarget_1_Temperature()
+                            + mContext.getString(R.string.all_unit_temperature);
                 }
                 detailDescs.add(new DetailDesc(mContext.getString(R.string.all_file_details_nozzle_temp), str));
             }
         }
 
-        if (mParser.getNozzle_0_Diameter() != -1) {
-            str = "L: " + mParser.getNozzle_0_Diameter() + mContext.getString(R.string.all_unit_mm);
-            if (mParser.getNozzle_1_Diameter() != -1) {
-                str += " R: " + mParser.getNozzle_1_Diameter() + mContext.getString(R.string.all_unit_mm);
+        if ((showLeftNozzle && mParser.getNozzle_0_Diameter() != -1)
+                || (showRightNozzle && mParser.getNozzle_1_Diameter() != -1)) {
+            str = "";
+            if (showLeftNozzle && mParser.getNozzle_0_Diameter() != -1) {
+                str = "L: " + mParser.getNozzle_0_Diameter()
+                        + mContext.getString(R.string.all_unit_mm);
+            }
+            if (showRightNozzle && mParser.getNozzle_1_Diameter() != -1) {
+                str += (str.isEmpty() ? "" : " ") + "R: "
+                        + mParser.getNozzle_1_Diameter()
+                        + mContext.getString(R.string.all_unit_mm);
             }
             detailDescs.add(new DetailDesc(mContext.getString(R.string.all_file_details_nozzle_diameter), str));
         }
@@ -304,7 +325,11 @@ public class BrowseFileDetailViewModel extends BaseViewModel {
             final float extruder0Retraction = mParser.getExtruder0RetractionDistance();
             final float extruder1Retraction = mParser.getExtruder1RetractionDistance();
             Logger.d("e0 retraction %.2f, e1 retraction %.2f", extruder0Retraction, extruder1Retraction);
-            boolean isRetractionOverLimit = extruder0Retraction > 2f || extruder1Retraction > 2f;
+            boolean usageConfirmed = mParser.isToolUsageConfirmed();
+            boolean checkLeft = !usageConfirmed || mParser.isTool0Used();
+            boolean checkRight = !usageConfirmed || mParser.isTool1Used();
+            boolean isRetractionOverLimit = (checkLeft && extruder0Retraction > 2f)
+                    || (checkRight && extruder1Retraction > 2f);
 
             return Observable.just(!isRetractionOverLimit);
         } else {
@@ -367,7 +392,11 @@ public class BrowseFileDetailViewModel extends BaseViewModel {
             float diameter1 = mMachine.getFDMController().getToolheadStatusSubjectHolder(0).getValue().getExtruderList().get(1).getDiameter();
             float gcodeDiameter0 = mParser.getNozzle_0_Diameter();
             float gcodeDiameter1 = mParser.getNozzle_1_Diameter();
-            return (diameter0 == gcodeDiameter0 || gcodeDiameter0 == -1) && (diameter1 == gcodeDiameter1 || gcodeDiameter1 == -1);
+            boolean usageConfirmed = mParser.isToolUsageConfirmed();
+            boolean checkLeft = !usageConfirmed || mParser.isTool0Used();
+            boolean checkRight = !usageConfirmed || mParser.isTool1Used();
+            return (!checkLeft || diameter0 == gcodeDiameter0 || gcodeDiameter0 == -1)
+                    && (!checkRight || diameter1 == gcodeDiameter1 || gcodeDiameter1 == -1);
         } catch (Exception e) {
             e.printStackTrace();
             return false;

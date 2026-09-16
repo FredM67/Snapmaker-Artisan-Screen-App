@@ -25,6 +25,12 @@ import fabscreen.platform.lib.LogHelper;
 
 public class A400LevelingXYCalibrationCheckInfoFragment extends A400CalibrationBaseFragment {
 
+    /** XY calibration prints a part, so the bed is cooled down to let the user take it off. */
+    @Override
+    protected boolean shouldCoolDownBedOnExit() {
+        return true;
+    }
+
     @BindView(R2.id.tv_a400_leveling_xy_adjust_title)
     TextView mAdjustSubTitle;
     @BindView(R2.id.tv_a400_leveling_xy_adjust_content)

@@ -21,6 +21,13 @@ import fabscreen.platform.core.ui.view.SlidingRulerView;
 import fabscreen.platform.core.ui.view.StepIntroductionDialog;
 
 public class A400LevelingXYCalibrationAdjustXFragment extends A400CalibrationBaseFragment {
+
+    /** XY calibration prints a part, so the bed is cooled down to let the user take it off. */
+    @Override
+    protected boolean shouldCoolDownBedOnExit() {
+        return true;
+    }
+
     FDMController fdmController;
     A400LevelingXYViewModel mViewModel;
     @BindView(R2.id.srv_a400_leveling_xy_adjust)

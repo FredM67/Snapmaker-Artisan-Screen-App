@@ -14,14 +14,20 @@ import io.reactivex.subjects.BehaviorSubject;
 public class CalibrationCompleteViewModel extends BaseViewModel {
     BehaviorSubject<Boolean> mIsExitingSubj = BehaviorSubject.createDefault(true);
 
-    public Observable<Boolean> saveAndExitCalibration() {
+    /**
+     * @param calibrationType one of {@link A400CalibrationActivity.CalibrationType}; only the XY
+     *                        calibration prints a part and therefore cools the bed down on exit.
+     *                        Bed leveling and Z-offset calibration leave the bed as it is.
+     */
+    public Observable<Boolean> saveAndExitCalibration(int calibrationType) {
         //noinspection rawtypes
         Observable<ResponseStructure> responseStructureObservable = null;
+        boolean coolDownBed = calibrationType == A400CalibrationActivity.CalibrationType.DUAL_EXTRUDER_XY;
         IMachine.WorkType workType = ServiceContainer.getInstance().getService(IMachine.class).getMachineInfoSubjectHolder().getValue().workType;
         switch (workType) {
             case FDM:
                 responseStructureObservable = ServiceContainer.getInstance().getService(IMachine.class).getFDMController().exitCalibration(true)
-                        .flatMap(responseStructure -> responseStructure.isSuccess() ? coolDownBedIfHave() : Observable.just(responseStructure));
+                        .flatMap(responseStructure -> (responseStructure.isSuccess() && coolDownBed) ? coolDownBedIfHave() : Observable.just(responseStructure));
                 break;
             case LASER:
                 responseStructureObservable = ServiceContainer.getInstance().getService(IMachine.class).getLaserController().exitCalibration(true);

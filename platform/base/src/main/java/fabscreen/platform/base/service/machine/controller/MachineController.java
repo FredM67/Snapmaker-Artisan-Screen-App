@@ -803,13 +803,9 @@ public class MachineController {
             default:
                 break;
         }
-        if (mMachine.getMachineController().getHeatedBed() != null) {
-            mDisposables.add(mMachine.getMachineController()
-                    .getHeatedBed()
-                    .setAllTargetTemperature(0)
-                    .subscribe(responseStructure -> {
-                    }, LogHelper::log));
-        }
+        // The heated bed is deliberately left untouched here: leaving the Control screen must
+        // keep the bed in whatever state the user put it in (pre-heating is often started there
+        // minutes before it is actually needed).
     }
 
     public void setRestartMachineResult(ResponseStructure<IStructure> responseStructure) {

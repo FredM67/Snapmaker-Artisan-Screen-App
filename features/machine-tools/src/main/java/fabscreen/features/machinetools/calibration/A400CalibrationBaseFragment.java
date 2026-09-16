@@ -149,7 +149,20 @@ public abstract class A400CalibrationBaseFragment extends BaseFragment {
         return responseStructureObservable;
     }
 
+    /**
+     * Whether leaving this calibration step should switch the heated bed off.
+     * <p>
+     * Only calibrations that actually print something (XY calibration) need it, so the user can
+     * take the printed parts off a cold bed. Bed leveling and Z-offset calibration must leave the
+     * bed as it is, otherwise a bed the user pre-heated on purpose gets silently switched off.
+     */
+    protected boolean shouldCoolDownBedOnExit() {
+        return false;
+    }
+
     protected Observable<ResponseStructure> coolDownBedIfHave() {
+        if (!shouldCoolDownBedOnExit())
+            return Observable.just(new ResponseStructure());
         if (!IMachine.WorkType.FDM.equals(ServiceContainer.getInstance().getService(IMachine.class).getMachineInfoSubjectHolder().getValue().workType))
             return Observable.just(new ResponseStructure());
         MachineController machineController = ServiceContainer.getInstance().getService(IMachine.class).getMachineController();

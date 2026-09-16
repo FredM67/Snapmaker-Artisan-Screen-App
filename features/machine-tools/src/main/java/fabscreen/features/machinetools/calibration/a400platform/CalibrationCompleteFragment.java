@@ -54,7 +54,7 @@ public class CalibrationCompleteFragment extends BaseFragment {
     }
 
     private void initView(int type) {
-        mViewModel.saveAndExitCalibration()
+        mViewModel.saveAndExitCalibration(type)
                 .observeOn(AndroidSchedulers.mainThread())
                 .as(bindToLifecycle())
                 .subscribe(isExiting ->

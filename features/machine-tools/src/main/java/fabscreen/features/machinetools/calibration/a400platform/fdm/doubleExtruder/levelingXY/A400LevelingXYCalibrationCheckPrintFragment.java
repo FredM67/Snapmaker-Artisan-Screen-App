@@ -47,6 +47,12 @@ import io.reactivex.disposables.Disposable;
 
 public class A400LevelingXYCalibrationCheckPrintFragment extends A400CalibrationBaseFragment {
 
+    /** XY calibration prints a part, so the bed is cooled down to let the user take it off. */
+    @Override
+    protected boolean shouldCoolDownBedOnExit() {
+        return true;
+    }
+
     @BindView(R2.id.iv_print_file_diagram)
     ImageView mIvPrintFileDiagram;
     @BindView(R2.id.iv_print_base_show)

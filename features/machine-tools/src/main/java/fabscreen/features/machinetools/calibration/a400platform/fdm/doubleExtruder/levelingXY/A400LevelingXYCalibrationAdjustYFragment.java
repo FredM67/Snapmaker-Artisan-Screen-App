@@ -21,6 +21,13 @@ import fabscreen.platform.lib.LogHelper;
 import io.reactivex.android.schedulers.AndroidSchedulers;
 
 public class A400LevelingXYCalibrationAdjustYFragment extends A400CalibrationBaseFragment {
+
+    /** XY calibration prints a part, so the bed is cooled down to let the user take it off. */
+    @Override
+    protected boolean shouldCoolDownBedOnExit() {
+        return true;
+    }
+
     A400LevelingXYViewModel mViewModel;
     @BindView(R2.id.srv_a400_leveling_xy_adjust)
     SlidingRulerView mSrvBar;

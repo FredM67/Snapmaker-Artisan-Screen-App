@@ -35,7 +35,7 @@ public class A400EnclosureControlViewModel extends BaseViewModel {
 
     Observable<ResponseStructure> setLedLevel(int value) {
         return ServiceContainer.getInstance().getService(IMachine.class).getMachineController().getEnclosure()
-                .setEnclosureLedLevel(value);
+                .setEnclosureLedLevelByUser(value);
     }
 
     Observable<ResponseStructure> setFanLevel(int value) {

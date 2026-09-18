@@ -61,6 +61,9 @@ public class A400LevelingBedCalibrationBedHeatingFragment extends A400Calibratio
         // Taken before anything of this calibration touches the bed, so the user's own pre-heat
         // (or a bed that was simply off) can be handed back untouched when the flow ends.
         mViewModel.snapshotBedState();
+        // A bed the user already pre-heated higher than the configured temperature is leveled at
+        // that temperature, instead of being pulled back down and drifting for the whole run.
+        mViewModel.adoptPreheatTemperature();
         initView();
         mViewModel.checkHome()
                 .flatMap(aBoolean -> mViewModel.setCalibrationMode(2))

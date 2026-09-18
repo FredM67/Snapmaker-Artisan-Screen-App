@@ -30,6 +30,9 @@ import io.reactivex.subjects.PublishSubject;
 @SuppressLint("AutoDispose")
 public class A400LevelingBedViewModel extends BaseViewModel {
 
+    /** Highest bed temperature the calibration may set, same range as the selection screen input. */
+    public final static int MAX_BED_CALIBRATION_TEMPERATURE = 80;
+
     private final static int[][] mDirection = {{0, 1}, {-1, 0}, {0, -1}, {1, 0}}; // right, up, left, down, rotate with counterclockwise
     private int mGrid = 0;
     private boolean mIsAutoMode = false;
@@ -237,6 +240,55 @@ public class A400LevelingBedViewModel extends BaseViewModel {
         }
         mBedSnapshotWorkMode = status.getWorkMode();
         mHasBedSnapshot = true;
+    }
+
+    /**
+     * The temperature auto bed leveling is going to use: the configured one, raised to a pre-heat
+     * the user already has running. Without this, a bed pre-heated to 80 °C gets its target pulled
+     * back down to the configured value and slowly drifts towards it for the whole run, so the
+     * points are not all probed at the same temperature.
+     * <p>
+     * A pre-heat lower than the configured temperature changes nothing, and an explicit
+     * "no heating" (0 °C) configuration is left alone.
+     */
+    public static int effectiveBedCalibrationTemperature(int configuredTemperature) {
+        MachineController machineController = ServiceContainer.getInstance().getService(IMachine.class).getMachineController();
+        HeatedBed heatedBed = (machineController != null) ? machineController.getHeatedBed() : null;
+        if (heatedBed == null) return configuredTemperature;
+        HeatedBed.HeatedBedStatus status = heatedBed.getHeatedBedStatusSubjectHolder().getValue();
+        if (status == null || status.getZoneList() == null) return configuredTemperature;
+
+        int preheat = 0;
+        for (HeatedBed.ZoneInfo zone : status.getZoneList()) {
+            preheat = Math.max(preheat, zone.getTargetTemperature());
+        }
+        return effectiveBedCalibrationTemperature(configuredTemperature, preheat);
+    }
+
+    private static int effectiveBedCalibrationTemperature(int configuredTemperature, int preheatTemperature) {
+        if (configuredTemperature <= 0) return configuredTemperature;
+        return Math.max(configuredTemperature, Math.min(preheatTemperature, MAX_BED_CALIBRATION_TEMPERATURE));
+    }
+
+    /**
+     * Applies {@link #effectiveBedCalibrationTemperature(int)} to this run, using the pre-heat from
+     * {@link #snapshotBedState()} rather than a second read, so it cannot pick up a target this
+     * calibration set itself. Call it right after the snapshot, before anything heats or shows an
+     * estimated duration.
+     */
+    public void adoptPreheatTemperature() {
+        if (!mHasBedSnapshot) return;
+
+        int preheat = 0;
+        for (int[] zone : mBedSnapshotZoneTargets) {
+            preheat = Math.max(preheat, zone[1]);
+        }
+        int adopted = effectiveBedCalibrationTemperature(mBedCalibrationBedTemperature, preheat);
+        if (adopted == mBedCalibrationBedTemperature) return;
+
+        mBedCalibrationBedTemperature = adopted;
+        // The estimate was computed in the constructor, against the configured temperature.
+        wholeCalculateTime = CalculateHeatingTime() + mGrid * mGrid * LEVELING_POINT_TIME;
     }
 
     /**

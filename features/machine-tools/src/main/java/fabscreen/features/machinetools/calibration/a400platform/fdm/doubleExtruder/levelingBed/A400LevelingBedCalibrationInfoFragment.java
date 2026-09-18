@@ -73,7 +73,8 @@ public class A400LevelingBedCalibrationInfoFragment extends A400CalibrationBaseI
         }
         mCalibrationMode = helper.getA400LevelingBedCalibrationMode();
         mCalibrationGrid = getResources().getStringArray(R.array.a400_calibration_leveling_grid_types_array)[gridGeoIndex(helper.getA400LevelingBedCalibrationGrid())];
-        mCalibrationBedTemperature = helper.getA400LevelingBedCalibrationBedTemperature();
+        // The summary must announce the temperature that will really be used, pre-heat included.
+        mCalibrationBedTemperature = A400LevelingBedViewModel.effectiveBedCalibrationTemperature(helper.getA400LevelingBedCalibrationBedTemperature());
     }
 
     private int gridGeoIndex(int a400LevelingBedCalibrationGrid) {

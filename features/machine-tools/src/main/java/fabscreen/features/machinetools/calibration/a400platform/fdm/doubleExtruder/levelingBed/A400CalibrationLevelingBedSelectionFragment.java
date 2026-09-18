@@ -69,6 +69,10 @@ public class A400CalibrationLevelingBedSelectionFragment extends BaseFragment {
 
     private int mGrid;
     private int mTemperature;
+    /** The stored setting, as opposed to {@link #mTemperature} which may show a running pre-heat. */
+    private int mConfiguredTemperature;
+    /** Whether the temperature shown was typed by the user, and so is worth storing. */
+    private boolean mTemperatureEdited;
     private int mHeadType;
     private MenuAdapter mMenuAdapter;
     private int mCurrentPosition = 0;
@@ -173,7 +177,8 @@ public class A400CalibrationLevelingBedSelectionFragment extends BaseFragment {
             @Override
             public void afterTextChanged(Editable s) {
                 if (!TextUtils.isEmpty(s.toString())) {
-                    mTemperature = getInputValue(StringToValueUtils.parseInt(s.toString()), 0, 80);
+                    mTemperature = getInputValue(StringToValueUtils.parseInt(s.toString()), 0, A400LevelingBedViewModel.MAX_BED_CALIBRATION_TEMPERATURE);
+                    mTemperatureEdited = true;
                     mEtBedTemperature.setText("" + mTemperature);
                 }
 
@@ -184,7 +189,11 @@ public class A400CalibrationLevelingBedSelectionFragment extends BaseFragment {
             mCustomKeyboardUtil.showKeyboard(v, CustomKeyboardUtil.INPUT_TYPE_NUMBER_DECIMAL);
             mCustomKeyboardUtil.setNumberInputType(InputType.TYPE_CLASS_NUMBER);
         });
-        mTemperature = helper.getA400LevelingBedCalibrationBedTemperature();
+        // Shows the temperature the calibration would really use, so a running pre-heat is visible
+        // here and can still be overridden by typing another value. Only a typed value is stored,
+        // a pre-heat is transient and must not overwrite the setting.
+        mConfiguredTemperature = helper.getA400LevelingBedCalibrationBedTemperature();
+        mTemperature = A400LevelingBedViewModel.effectiveBedCalibrationTemperature(mConfiguredTemperature);
 
 
         if (mHeadType == Module.ModuleType.HEAD_3DP) {
@@ -219,6 +228,7 @@ public class A400CalibrationLevelingBedSelectionFragment extends BaseFragment {
     }
 
     private void onSectionSelected(int position) {
+        boolean wasEdited = mTemperatureEdited;
         mTvLevelingBedSelectionTitle.setText(position == 0 ? R.string.calibration_auto_mode : R.string.calibration_manual_mode);
         helper.setA400LevelingBedCalibrationMode(position);
         if (position == 0) {
@@ -227,12 +237,15 @@ public class A400CalibrationLevelingBedSelectionFragment extends BaseFragment {
                 helper.setA400LevelingBedCalibrationMode(A400_LEVELING_BED_CALIBRATION_MANUAL);
             } else {
                 mRlTemperature.setVisibility(View.VISIBLE);
-                mEtBedTemperature.setText(String.valueOf(helper.getA400LevelingBedCalibrationBedTemperature()));
+                // mTemperature, not the stored preference: it already accounts for a running
+                // pre-heat and for anything the user typed before toggling the mode.
+                mEtBedTemperature.setText(String.valueOf(mTemperature));
             }
         } else {
             mRlTemperature.setVisibility(View.INVISIBLE);
         }
-
+        // The setText above goes through the watcher, which cannot tell it apart from typing.
+        mTemperatureEdited = wasEdited;
     }
 
     private List<CalibrationModeSelectionItem> getSections() {
@@ -280,7 +293,9 @@ public class A400CalibrationLevelingBedSelectionFragment extends BaseFragment {
     private void onDetermine() {
         int a400LevelingBedCalibrationMode = helper.getA400LevelingBedCalibrationMode();
         if (a400LevelingBedCalibrationMode == A400_LEVELING_BED_CALIBRATION_AUTO) {
-            helper.setA400LevelingBedCalibrationBedTemperature(mTemperature);
+            // A pre-heat picked up for this run is not a setting change, so only a value the user
+            // actually typed is written back.
+            helper.setA400LevelingBedCalibrationBedTemperature(mTemperatureEdited ? mTemperature : mConfiguredTemperature);
         }
         helper.setA400LevelingBedCalibrationGrid(IndexToGrid(mGrid));
     }

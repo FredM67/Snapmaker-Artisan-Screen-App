@@ -18,7 +18,9 @@ import fabscreen.features.machinetools.calibration.A400CalibrationBaseFragment;
 import fabscreen.features.machinetools.calibration.a400platform.fdm.doubleExtruder.levelingBed.A400LevelingBedViewModel;
 import fabscreen.platform.base.service.machine.entity.module.HeatedBed;
 import fabscreen.platform.base.service.machine.entity.parts.Extruder;
+import fabscreen.platform.base.service.machine.structure.ResponseStructure;
 import fabscreen.platform.lib.LogHelper;
+import io.reactivex.Observable;
 import io.reactivex.android.schedulers.AndroidSchedulers;
 import io.reactivex.disposables.Disposable;
 
@@ -56,6 +58,9 @@ public class A400LevelingBedCalibrationBedHeatingFragment extends A400Calibratio
     @Override
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
+        // Taken before anything of this calibration touches the bed, so the user's own pre-heat
+        // (or a bed that was simply off) can be handed back untouched when the flow ends.
+        mViewModel.snapshotBedState();
         initView();
         mViewModel.checkHome()
                 .flatMap(aBoolean -> mViewModel.setCalibrationMode(2))
@@ -140,6 +145,12 @@ public class A400LevelingBedCalibrationBedHeatingFragment extends A400Calibratio
     @Override
     protected int getLayoutResID() {
         return R.layout.fragment_a400_leveling_bed_calibration_heating;
+    }
+
+    /** Bed leveling heats the bed itself, so leaving it must hand the previous state back. */
+    @Override
+    protected Observable<ResponseStructure> applyBedStateOnExit() {
+        return mViewModel.restoreBedState();
     }
 
     @Override

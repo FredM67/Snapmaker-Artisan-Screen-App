@@ -48,6 +48,10 @@ public class A400LevelingBedViewModel extends BaseViewModel {
     private BehaviorSubject<Boolean> mTodoNext = BehaviorSubject.createDefault(false);
     private BehaviorSubject<Boolean> mToolheadStatusState = BehaviorSubject.createDefault(false);
     private BehaviorSubject<Boolean> mBedStatusState = BehaviorSubject.createDefault(false);
+    /** Bed targets ({zoneIndex, targetTemperature}) as they were before the calibration heated the bed. */
+    private final ArrayList<int[]> mBedSnapshotZoneTargets = new ArrayList<>();
+    private int mBedSnapshotWorkMode = HeatedBed.HeatedBedStatus.HEATED_BED_STATUS_WORK_MODE_WHOLE;
+    private boolean mHasBedSnapshot = false;
 
     public A400LevelingBedViewModel() {
         super();
@@ -213,6 +217,80 @@ public class A400LevelingBedViewModel extends BaseViewModel {
                     LogHelper.log(e);
                     mIsMovingSubject.onNext(false);
                 });
+    }
+
+    /**
+     * Remembers the bed targets and work mode the user had set, before the calibration overwrites
+     * them with its own temperature. Only the first call in a calibration run is taken into
+     * account, so re-entering a step cannot snapshot the calibration temperature itself.
+     */
+    public void snapshotBedState() {
+        if (mHasBedSnapshot) return;
+        HeatedBed heatedBed = machineController.getHeatedBed();
+        if (heatedBed == null) return;
+        HeatedBed.HeatedBedStatus status = heatedBed.getHeatedBedStatusSubjectHolder().getValue();
+        if (status == null || status.getZoneList() == null || status.getZoneList().isEmpty()) return;
+
+        mBedSnapshotZoneTargets.clear();
+        for (HeatedBed.ZoneInfo zone : status.getZoneList()) {
+            mBedSnapshotZoneTargets.add(new int[]{zone.getZoneIndex(), zone.getTargetTemperature()});
+        }
+        mBedSnapshotWorkMode = status.getWorkMode();
+        mHasBedSnapshot = true;
+    }
+
+    /**
+     * Puts the bed back into the state captured by {@link #snapshotBedState()}: the user's own
+     * pre-heat is kept, and a bed that was off before the calibration is switched off again.
+     * Does nothing when no snapshot was taken, and never restores twice for the same snapshot.
+     */
+    public Observable<ResponseStructure> restoreBedState() {
+        if (!mHasBedSnapshot) return Observable.just(new ResponseStructure());
+        mHasBedSnapshot = false;
+
+        HeatedBed heatedBed = machineController.getHeatedBed();
+        if (heatedBed == null) return Observable.just(new ResponseStructure());
+
+        int firstTarget = mBedSnapshotZoneTargets.get(0)[1];
+        int highestTarget = 0;
+        int heatedZones = 0;
+        boolean sameTargetEverywhere = true;
+        for (int[] zone : mBedSnapshotZoneTargets) {
+            highestTarget = Math.max(highestTarget, zone[1]);
+            if (zone[1] > 0) heatedZones++;
+            sameTargetEverywhere &= (zone[1] == firstTarget);
+        }
+
+        // The work mode is the last field of the 0xa0 telemetry and HeatedBedStatus tolerates it
+        // being absent, in which case it reads back as INNER. Several heated zones can only come
+        // from the whole-bed mode, so that case is trusted over the reported value.
+        int workMode = (heatedZones > 1)
+                ? HeatedBed.HeatedBedStatus.HEATED_BED_STATUS_WORK_MODE_WHOLE
+                : mBedSnapshotWorkMode;
+
+        // 0x14/0x04 also restores the work mode, which the per-zone command cannot do. Switching
+        // the bed off doesn't depend on the mode, so there we keep whatever mode is set (0xFF).
+        Observable<ResponseStructure> restore = (highestTarget == 0)
+                ? heatedBed.setTargetTemperatureAndMode(0)
+                : heatedBed.setTargetTemperatureAndMode(highestTarget, workMode);
+        if (sameTargetEverywhere) return restore;
+
+        // Zones had different targets, so reapply them one by one once the mode is back.
+        final ArrayList<int[]> zoneTargets = new ArrayList<>(mBedSnapshotZoneTargets);
+        return restore.flatMap(responseStructure -> {
+            if (!responseStructure.isSuccess()) return Observable.just(responseStructure);
+            ArrayList<Observable<ResponseStructure>> observables = new ArrayList<>();
+            for (int[] zone : zoneTargets) {
+                //noinspection deprecation
+                observables.add(heatedBed.setZoneTargetTemperature(zone[0], zone[1]));
+            }
+            return Observable.zip(observables, results -> {
+                for (Object result : results) {
+                    if (!((ResponseStructure) result).isSuccess()) return (ResponseStructure) result;
+                }
+                return (ResponseStructure) results[0];
+            });
+        });
     }
 
     public Observable<ResponseStructure> startHeating() {

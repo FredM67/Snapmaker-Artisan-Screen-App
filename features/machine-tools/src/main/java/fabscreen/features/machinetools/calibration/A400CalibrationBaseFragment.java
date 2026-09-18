@@ -70,7 +70,7 @@ public abstract class A400CalibrationBaseFragment extends BaseFragment {
                     fabBackConfirm.mCancelBtn.setEnabled(false);
                     fabBackConfirm.mSecondBtn.setEnabled(false);
                     exit()
-                            .flatMap(responseStructure -> responseStructure.isSuccess() ? coolDownBedIfHave() : Observable.just(responseStructure))
+                            .flatMap(responseStructure -> responseStructure.isSuccess() ? applyBedStateOnExit() : Observable.just(responseStructure))
                             .observeOn(AndroidSchedulers.mainThread())
                             .as(bindToLifecycle())
                             .subscribe(success -> {
@@ -114,7 +114,7 @@ public abstract class A400CalibrationBaseFragment extends BaseFragment {
 
     protected void backOnShow() {
         exit()
-                .flatMap(responseStructure -> responseStructure.isSuccess() ? coolDownBedIfHave() : Observable.just(responseStructure))
+                .flatMap(responseStructure -> responseStructure.isSuccess() ? applyBedStateOnExit() : Observable.just(responseStructure))
                 .observeOn(AndroidSchedulers.mainThread())
                 .as(bindToLifecycle())
                 .subscribe(success -> {
@@ -158,6 +158,17 @@ public abstract class A400CalibrationBaseFragment extends BaseFragment {
      */
     protected boolean shouldCoolDownBedOnExit() {
         return false;
+    }
+
+    /**
+     * What to do with the heated bed when this calibration step is left, whatever the reason
+     * (completed, stopped by the user, or aborted on error).
+     * <p>
+     * The default is {@link #coolDownBedIfHave()}. Calibrations that heat the bed themselves
+     * override this to put the bed back into the state the user had left it in.
+     */
+    protected Observable<ResponseStructure> applyBedStateOnExit() {
+        return coolDownBedIfHave();
     }
 
     protected Observable<ResponseStructure> coolDownBedIfHave() {

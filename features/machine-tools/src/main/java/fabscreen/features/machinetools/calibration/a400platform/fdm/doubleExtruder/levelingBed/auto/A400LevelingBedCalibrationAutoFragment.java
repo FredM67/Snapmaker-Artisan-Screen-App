@@ -22,6 +22,7 @@ import fabscreen.features.machinetools.calibration.a400platform.fdm.doubleExtrud
 import fabscreen.platform.base.instantiation.ServiceContainer;
 import fabscreen.platform.base.service.IMachine;
 import fabscreen.platform.base.service.IPreferences;
+import fabscreen.platform.base.service.machine.structure.ResponseStructure;
 import fabscreen.platform.base.view.DecisionDialog;
 import fabscreen.platform.core.ui.view.ChessboardView;
 import fabscreen.platform.lib.LogHelper;
@@ -113,7 +114,7 @@ public class A400LevelingBedCalibrationAutoFragment extends A400CalibrationBaseF
         isFinish = true;
         ServiceContainer.getInstance().getService(IMachine.class).getFDMController()
                 .exitCalibration(true)
-                .flatMap(responseStructure -> responseStructure.isSuccess() ? coolDownBedIfHave() : Observable.just(responseStructure))
+                .flatMap(responseStructure -> responseStructure.isSuccess() ? applyBedStateOnExit() : Observable.just(responseStructure))
                 .as(bindToLifecycle())
                 .subscribe(response -> {
                     isFinish = false;
@@ -133,6 +134,12 @@ public class A400LevelingBedCalibrationAutoFragment extends A400CalibrationBaseF
         return getViewModelProvider().get(A400LevelingBedViewModel.class);
     }
 
+    /** Bed leveling heats the bed itself, so leaving it must hand the previous state back. */
+    @Override
+    protected Observable<ResponseStructure> applyBedStateOnExit() {
+        return mViewModel.restoreBedState();
+    }
+
     @Override
     protected void back() {
         fabBackConfirm = DecisionDialog.create(getContext())
@@ -147,7 +154,7 @@ public class A400LevelingBedCalibrationAutoFragment extends A400CalibrationBaseF
                     fabBackConfirm.mSecondBtn.setEnabled(false);
                     mViewModel.getInterruptAutoLevelingObservable()
                             .flatMap(responseStructure -> ServiceContainer.getInstance().getService(IMachine.class).getFDMController().exitCalibration(false))
-                            .flatMap(responseStructure -> responseStructure.isSuccess() ? coolDownBedIfHave() : Observable.just(responseStructure))
+                            .flatMap(responseStructure -> responseStructure.isSuccess() ? applyBedStateOnExit() : Observable.just(responseStructure))
                             .observeOn(AndroidSchedulers.mainThread())
                             .as(bindToLifecycle())
                             .subscribe(success -> {

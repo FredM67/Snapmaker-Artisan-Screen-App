@@ -4292,7 +4292,7 @@ class OrcaRequestHandler {
 
         try {
             Observable<ResponseStructure> operation = "led".equals(target)
-                    ? enclosure.setEnclosureLedLevel(percent)
+                    ? enclosure.setEnclosureLedLevelByUser(percent)
                     : enclosure.setEnclosureFanLevel(percent);
             Disposable disposable = operation
                     .timeout(ENCLOSURE_CONTROL_TIMEOUT_MS, TimeUnit.MILLISECONDS)

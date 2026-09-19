@@ -11,9 +11,12 @@ import fabscreen.platform.base.R;
 import fabscreen.platform.base.instantiation.ServiceContainer;
 import fabscreen.platform.base.service.IAppService;
 import fabscreen.platform.base.service.IMachine;
+import fabscreen.platform.base.service.IPreferences;
 import fabscreen.platform.base.service.machine.IStructure;
 import fabscreen.platform.base.service.machine.MachineConnectionController;
+import fabscreen.platform.base.service.machine.MachineStatus;
 import fabscreen.platform.base.service.machine.TelemetryFreshness;
+import fabscreen.platform.base.service.machine.controller.MachineOperationStatus;
 import fabscreen.platform.base.service.machine.entity.Module;
 import fabscreen.platform.base.service.machine.structure.BaseStructure;
 import fabscreen.platform.base.service.machine.structure.OpenDoorDetectionState;
@@ -54,7 +57,7 @@ public class Enclosure extends Module {
     @Override
     public void init() {
         Logger.d("Enclosure module initialization start.");
-        mDisposables.add(requestInfo().subscribe(response -> {/**/}, LogHelper::log));
+        mDisposables.add(requestInfo().subscribe(this::restoreLedLevel, LogHelper::log));
 
         mDisposables.add(mConnectionController.watch(0x15, 0xa0, new ResponseStructure<>(new EnclosureStatus()))
                 .subscribe(response -> {
@@ -104,6 +107,50 @@ public class Enclosure extends Module {
         baseStructure.getProp("key").setValue(getModuleInfo().getKey());
         baseStructure.getProp("value").setValue(value);
         return mConnectionController.request(0x15, 0x02, baseStructure, new ResponseStructure<>());
+    }
+
+    /**
+     * Sets the strip on the user's behalf and remembers the level, so it can be brought back the
+     * next time the enclosure comes up. The controller keeps {@code light_level} in RAM only and
+     * zeroes it on every boot, so the memory has to live here.
+     *
+     * <p>Writes the machine makes on its own — the print auto-thickness measurement, the 10W
+     * camera calibration — must keep using {@link #setEnclosureLedLevel(int)} so a transient
+     * on/off cannot overwrite what the user chose.
+     */
+    public Observable<ResponseStructure> setEnclosureLedLevelByUser(int value) {
+        return setEnclosureLedLevel(value)
+                .doOnNext(response -> {
+                    if (response != null && response.isSuccess()) {
+                        ServiceContainer.getInstance().getService(IPreferences.class).getHelper()
+                                .setEnclosureLedLevel(value);
+                    }
+                });
+    }
+
+    /** Brings the strip back to the level the user last chose, once per connection. */
+    private void restoreLedLevel(ResponseStructure<EnclosureStatus> response) {
+        if (response == null || !response.isSuccess() || response.dataProp == null) {
+            return;
+        }
+        IPreferences.Helper helper = ServiceContainer.getInstance().getService(IPreferences.class).getHelper();
+        if (!helper.getEnclosureAutoLightingOn()) {
+            return;
+        }
+        final int storedLevel = helper.getEnclosureLedLevel();
+        // The controller always reports 0 right after a boot. Anything else means the strip is
+        // already driven by something on this connection, so leave it alone.
+        if (storedLevel <= 0 || response.dataProp.getLedValue() != 0) {
+            return;
+        }
+        // Reconnecting in the middle of a job must not light the strip: auto-thickness
+        // measurement turns it off on purpose and would get a wrong reading.
+        MachineStatus machineStatus = mMachine.getMachineStatusSubjectHolder().getValue();
+        if (machineStatus != null && MachineOperationStatus.isPrinting(machineStatus.status)) {
+            return;
+        }
+        Logger.d("Restoring enclosure LED level to " + storedLevel);
+        mDisposables.add(setEnclosureLedLevel(storedLevel).subscribe(result -> {/**/}, LogHelper::log));
     }
 
     public Observable<ResponseStructure> setEnclosureDoorDetection(boolean enabled) {

@@ -107,6 +107,7 @@ public interface IPreferences {
         private static final String ADD_ON_AIR_PURIFIER_CNC_AUTO_ON_FLAG = "AIR_PURIFIER_CNC_AUTO_ON_FLAG";
         private static final String ADD_ON_AIR_PURIFIER_AUTO_OFF_FLAG = "AIR_PURIFIER_AUTO_OFF_FLAG";
         private static final String ADD_ON_ENCLOSURE_AUTO_LIGHTING_ON_FLAG = "ENCLOSURE_AUTO_LIGHTING_ON_FLAG";
+        private static final String ADD_ON_ENCLOSURE_LED_LEVEL = "ENCLOSURE_LED_LEVEL";
 
         // Settings
 
@@ -602,6 +603,19 @@ public interface IPreferences {
 
         public void setEnclosureAutoLightingOn(boolean flag) {
             service.setPref(ADD_ON_ENCLOSURE_AUTO_LIGHTING_ON_FLAG, flag);
+        }
+
+        /**
+         * The brightness the user last asked for, re-applied when the enclosure comes back up.
+         * Defaults to full power so a machine that never had the strip touched still lights up,
+         * which is what auto-lighting has always meant.
+         */
+        public int getEnclosureLedLevel() {
+            return service.getPref(ADD_ON_ENCLOSURE_LED_LEVEL, 100);
+        }
+
+        public void setEnclosureLedLevel(int level) {
+            service.setPref(ADD_ON_ENCLOSURE_LED_LEVEL, level);
         }
 
         // -- Settings

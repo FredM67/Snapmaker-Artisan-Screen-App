@@ -50,7 +50,7 @@ public class EnclosureControlWidgetPresenter extends BasePresenter {
         final int value = isLedOn ? 0 : 100;
 
         Disposable sub = ServiceContainer.getInstance().getService(IMachine.class).getMachineController().getEnclosure()
-                .setEnclosureLedLevel(value)
+                .setEnclosureLedLevelByUser(value)
                 .flatMap(success -> ServiceContainer.getInstance().getService(IMachine.class).getMachineController().getEnclosure().getEnclosureStatusObservable())
                 .observeOn(AndroidSchedulers.mainThread())
                 .subscribe(status -> {

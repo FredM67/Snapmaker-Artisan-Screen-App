@@ -34,6 +34,12 @@ android {
         }
     }
 
+    packagingOptions {
+        // This is an Android/ARM PIE executable launched from nativeLibraryDir,
+        // not a JNI library. Re-stripping it can invalidate its Go build.
+        doNotStrip '**/libobicopeer.so'
+    }
+
     splits {
         abi {
             enable true
@@ -42,6 +48,39 @@ android {
         }
     }
 }
+
+task verifyObicoPeerBinary {
+    doLast {
+        def sourceRoot = rootProject.file('platform/base/obico-webrtc')
+        def binary = file('libs/armeabi-v7a/libobicopeer.so')
+        def manifest = file('libs/armeabi-v7a/libobicopeer.sha256')
+        if (!binary.isFile() || !manifest.isFile()) {
+            throw new GradleException('Obico peer missing; run platform/base/obico-webrtc/build-android.ps1')
+        }
+        def sha256 = { byte[] bytes ->
+            java.security.MessageDigest.getInstance('SHA-256').digest(bytes).encodeHex().toString()
+        }
+        def sourceFiles = fileTree(dir: sourceRoot, includes: ['**/*.go', '**/go.mod', '**/go.sum'])
+                .files.toList().sort { a, b ->
+                    sourceRoot.toPath().relativize(a.toPath()).toString() <=>
+                            sourceRoot.toPath().relativize(b.toPath()).toString()
+                }
+        def sourceLines = sourceFiles.collect { source ->
+            def relative = sourceRoot.toPath().relativize(source.toPath()).toString().replace('\\', '/')
+            "${relative} ${sha256(source.bytes)}"
+        }
+        def sourceDigest = sha256((sourceLines.join('\n') + '\n').getBytes('UTF-8'))
+        def expected = [:]
+        manifest.eachLine { line ->
+            def fields = line.split('=', 2)
+            if (fields.length == 2) expected[fields[0]] = fields[1]
+        }
+        if (expected.source_sha256 != sourceDigest || expected.binary_sha256 != sha256(binary.bytes)) {
+            throw new GradleException("Obico peer binary is stale (source ${sourceDigest}, binary ${sha256(binary.bytes)}); run platform/base/obico-webrtc/build-android.ps1")
+        }
+    }
+}
+preBuild.dependsOn verifyObicoPeerBinary
 
 debounce {
     isDebug = true

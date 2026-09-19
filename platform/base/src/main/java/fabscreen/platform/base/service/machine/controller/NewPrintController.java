@@ -282,7 +282,9 @@ public class NewPrintController implements IServiceIdentifier {
             // Because of the abnormality, the master control stopped actively
             case 22:
                 Logger.i("Print Finished.");
-                mPrintEventSubject.onNext(new PrintEvent(STOP_SUCCESS, 0));
+                // Preserve the controller issue so cloud/status consumers can distinguish an
+                // abnormal controller-initiated stop from an operator-requested cancellation.
+                mPrintEventSubject.onNext(new PrintEvent(STOP_SUCCESS, 22));
                 mCurrentProgressSubject.onNext(0f);
                 unWatchPrintingLineNo();
                 mTickCounter.stop();

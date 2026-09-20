@@ -158,8 +158,15 @@ public class A400LevelingBedCalibrationAutoFragment extends A400CalibrationBaseF
                             .observeOn(AndroidSchedulers.mainThread())
                             .as(bindToLifecycle())
                             .subscribe(success -> {
+                                fabBackConfirm.mCancelBtn.setEnabled(true);
+                                fabBackConfirm.mSecondBtn.setEnabled(true);
                                 if (!success.isSuccess()) {
-                                    Logger.d("Exit Calibration: " + success);
+                                    // Restoring the bed state failed: leave the dialog up so the
+                                    // operator can see the machine hasn't been abandoned mid-heat
+                                    // and retry "Stop" rather than silently exiting on a bed that
+                                    // wasn't handed back to its previous state.
+                                    Logger.e("Exit Calibration: " + success);
+                                    return;
                                 }
                                 dialog.dismiss();
                                 requireActivity().setResult(Activity.RESULT_CANCELED);

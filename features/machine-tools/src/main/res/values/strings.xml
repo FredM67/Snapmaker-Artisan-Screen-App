@@ -33,6 +33,10 @@
     <string name="a400_calibration_heated_bed_leveling_auto_content">The toolhead will automatically probe and obtain data for specific points on the heated bed to adjust the movement of the two nozzles accordingly during printing.</string>
     <string name="a400_calibration_heated_bed_leveling_manual_content">Manually control the toolhead to probe and obtain data for specific points on the heated bed. The movement of the two nozzles will be adjusted accordingly during printing.</string>
 
+    <string name="a400_calibration_heated_bed_preheat_title">Heated Bed Already Preheating</string>
+    <string name="a400_calibration_heated_bed_preheat_content">The heated bed is already preheating to a higher temperature than the one configured for this calibration. Use the current preheat temperature, or wait for the bed to cool down to the configured temperature?</string>
+    <string name="a400_calibration_heated_bed_preheat_use_current">Use Current</string>
+    <string name="a400_calibration_heated_bed_preheat_wait_to_cool">Wait to Cool</string>
     <string name="a400_calibration_heated_bed_leveling_content_1">Heat Heated Bed and Nozzle (1/2)</string>
     <string name="a400_calibration_heated_bed_leveling_content_2">Calibrate Calibration Points (2/2)</string>
     <string name="a400_calibration_heated_bed_leveling_content_3">Calibrate Calibration Points (3/3)</string>

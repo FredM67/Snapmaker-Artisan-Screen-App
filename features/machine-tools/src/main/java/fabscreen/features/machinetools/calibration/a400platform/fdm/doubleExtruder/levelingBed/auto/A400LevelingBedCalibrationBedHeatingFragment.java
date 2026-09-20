@@ -19,6 +19,7 @@ import fabscreen.features.machinetools.calibration.a400platform.fdm.doubleExtrud
 import fabscreen.platform.base.service.machine.entity.module.HeatedBed;
 import fabscreen.platform.base.service.machine.entity.parts.Extruder;
 import fabscreen.platform.base.service.machine.structure.ResponseStructure;
+import fabscreen.platform.base.view.DecisionDialog;
 import fabscreen.platform.lib.LogHelper;
 import io.reactivex.Observable;
 import io.reactivex.android.schedulers.AndroidSchedulers;
@@ -61,9 +62,32 @@ public class A400LevelingBedCalibrationBedHeatingFragment extends A400Calibratio
         // Taken before anything of this calibration touches the bed, so the user's own pre-heat
         // (or a bed that was simply off) can be handed back untouched when the flow ends.
         mViewModel.snapshotBedState();
-        // A bed the user already pre-heated higher than the configured temperature is leveled at
-        // that temperature, instead of being pulled back down and drifting for the whole run.
-        mViewModel.adoptPreheatTemperature();
+        if (mViewModel.wouldAdoptPreheatTemperature()) {
+            // The bed is already preheating above the configured temperature: probing at the
+            // configured value would mean doing it while the bed is still physically hotter and
+            // drifting down, so this is left to the operator instead of silently overridden.
+            DecisionDialog.create(getContext())
+                    .setTitle(R.string.a400_calibration_heated_bed_preheat_title)
+                    .setContent(getString(R.string.a400_calibration_heated_bed_preheat_content))
+                    .setType(DecisionDialog.WARMING_TYPE)
+                    .setDialogStatus(DecisionDialog.BTN_TWO, true, false, true, true)
+                    .setPic(R.drawable.pic_a400_warning_112x112)
+                    .setFirstTv(getString(R.string.a400_calibration_heated_bed_preheat_wait_to_cool), R.color.select_dialog_white_txt, (dialog, which) -> {
+                        dialog.dismiss();
+                        startCalibration();
+                    })
+                    .setSecondTv(getString(R.string.a400_calibration_heated_bed_preheat_use_current), R.color.select_dialog_yellow_txt, (dialog, which) -> {
+                        mViewModel.adoptPreheatTemperature();
+                        dialog.dismiss();
+                        startCalibration();
+                    })
+                    .show();
+        } else {
+            startCalibration();
+        }
+    }
+
+    private void startCalibration() {
         initView();
         mViewModel.checkHome()
                 .flatMap(aBoolean -> mViewModel.setCalibrationMode(2))

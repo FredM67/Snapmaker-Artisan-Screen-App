@@ -33,6 +33,9 @@ public class A400LevelingBedViewModel extends BaseViewModel {
     /** Highest bed temperature the calibration may set, same range as the selection screen input. */
     public final static int MAX_BED_CALIBRATION_TEMPERATURE = 80;
 
+    /** Degrees within which the bed is considered to have reached its calibration target, heating up or cooling down. */
+    private final static float BED_TEMPERATURE_READY_TOLERANCE = 1f;
+
     private final static int[][] mDirection = {{0, 1}, {-1, 0}, {0, -1}, {1, 0}}; // right, up, left, down, rotate with counterclockwise
     private int mGrid = 0;
     private boolean mIsAutoMode = false;
@@ -279,11 +282,7 @@ public class A400LevelingBedViewModel extends BaseViewModel {
     public void adoptPreheatTemperature() {
         if (!mHasBedSnapshot) return;
 
-        int preheat = 0;
-        for (int[] zone : mBedSnapshotZoneTargets) {
-            preheat = Math.max(preheat, zone[1]);
-        }
-        int adopted = effectiveBedCalibrationTemperature(mBedCalibrationBedTemperature, preheat);
+        int adopted = effectiveBedCalibrationTemperature(mBedCalibrationBedTemperature, snapshotPreheatTemperature());
         if (adopted == mBedCalibrationBedTemperature) return;
 
         mBedCalibrationBedTemperature = adopted;
@@ -292,56 +291,55 @@ public class A400LevelingBedViewModel extends BaseViewModel {
     }
 
     /**
+     * Whether {@link #adoptPreheatTemperature()} would actually raise the configured temperature.
+     * The caller uses this to decide whether the operator needs to be asked: adopting the running
+     * pre-heat means probing at a higher temperature than they configured, so it should be their
+     * choice rather than a silent override.
+     */
+    public boolean wouldAdoptPreheatTemperature() {
+        if (!mHasBedSnapshot) return false;
+        return effectiveBedCalibrationTemperature(mBedCalibrationBedTemperature, snapshotPreheatTemperature()) != mBedCalibrationBedTemperature;
+    }
+
+    private int snapshotPreheatTemperature() {
+        int preheat = 0;
+        for (int[] zone : mBedSnapshotZoneTargets) {
+            preheat = Math.max(preheat, zone[1]);
+        }
+        return preheat;
+    }
+
+    /**
      * Puts the bed back into the state captured by {@link #snapshotBedState()}: the user's own
      * pre-heat is kept, and a bed that was off before the calibration is switched off again.
-     * Does nothing when no snapshot was taken, and never restores twice for the same snapshot.
+     * Does nothing when no snapshot was taken. The snapshot is kept until the restore actually
+     * succeeds, so a failed attempt can simply be retried by calling this again.
+     * <p>
+     * Only the bed/center target and the work mode are independently settable on the firmware;
+     * the chamber/outer target is derived from them (mirrored in WHOLE mode, forced towards 0 in
+     * INNER mode) and the firmware's per-zone command ({@code 0x14/0x02}) actually applies to
+     * every zone regardless of the index it is sent with. So the snapshot is restored as a single
+     * target-and-mode command rather than as independent per-zone targets.
      */
     public Observable<ResponseStructure> restoreBedState() {
         if (!mHasBedSnapshot) return Observable.just(new ResponseStructure());
-        mHasBedSnapshot = false;
 
         HeatedBed heatedBed = machineController.getHeatedBed();
         if (heatedBed == null) return Observable.just(new ResponseStructure());
 
-        int firstTarget = mBedSnapshotZoneTargets.get(0)[1];
         int highestTarget = 0;
-        int heatedZones = 0;
-        boolean sameTargetEverywhere = true;
         for (int[] zone : mBedSnapshotZoneTargets) {
             highestTarget = Math.max(highestTarget, zone[1]);
-            if (zone[1] > 0) heatedZones++;
-            sameTargetEverywhere &= (zone[1] == firstTarget);
         }
 
-        // The work mode is the last field of the 0xa0 telemetry and HeatedBedStatus tolerates it
-        // being absent, in which case it reads back as INNER. Several heated zones can only come
-        // from the whole-bed mode, so that case is trusted over the reported value.
-        int workMode = (heatedZones > 1)
-                ? HeatedBed.HeatedBedStatus.HEATED_BED_STATUS_WORK_MODE_WHOLE
-                : mBedSnapshotWorkMode;
-
-        // 0x14/0x04 also restores the work mode, which the per-zone command cannot do. Switching
-        // the bed off doesn't depend on the mode, so there we keep whatever mode is set (0xFF).
-        Observable<ResponseStructure> restore = (highestTarget == 0)
-                ? heatedBed.setTargetTemperatureAndMode(0)
-                : heatedBed.setTargetTemperatureAndMode(highestTarget, workMode);
-        if (sameTargetEverywhere) return restore;
-
-        // Zones had different targets, so reapply them one by one once the mode is back.
-        final ArrayList<int[]> zoneTargets = new ArrayList<>(mBedSnapshotZoneTargets);
-        return restore.flatMap(responseStructure -> {
-            if (!responseStructure.isSuccess()) return Observable.just(responseStructure);
-            ArrayList<Observable<ResponseStructure>> observables = new ArrayList<>();
-            for (int[] zone : zoneTargets) {
-                //noinspection deprecation
-                observables.add(heatedBed.setZoneTargetTemperature(zone[0], zone[1]));
-            }
-            return Observable.zip(observables, results -> {
-                for (Object result : results) {
-                    if (!((ResponseStructure) result).isSuccess()) return (ResponseStructure) result;
-                }
-                return (ResponseStructure) results[0];
-            });
+        // The mode is restored from what was captured at snapshot time rather than re-derived
+        // from the targets: INNER mode can still report a positive chamber/outer target above
+        // DOUBLE_ZONE_BED_TOGETHER_ALLOW_MAX_TEMP (see Temperature::setTargetBed in the
+        // firmware), so "more than one zone has a positive target" does not reliably mean WHOLE.
+        // This also restores the right mode when the bed was simply off (both targets 0).
+        Observable<ResponseStructure> restore = heatedBed.setTargetTemperatureAndMode(highestTarget, mBedSnapshotWorkMode);
+        return restore.doOnNext(responseStructure -> {
+            if (responseStructure.isSuccess()) mHasBedSnapshot = false;
         });
     }
 
@@ -442,7 +440,10 @@ public class A400LevelingBedViewModel extends BaseViewModel {
                     float currentTemperature = heatedBedStatus.getZoneList().get(0).getCurrentTemperature();
                     int time = (int) (Math.abs(targetTemperature - currentTemperature) * HEATING_SPEED) + mGrid * mGrid * LEVELING_POINT_TIME;
                     mHeatTimeSubject.onNext(time);
-                    if (currentTemperature >= mBedCalibrationBedTemperature && mBedCalibrationBedTemperature != 0) {
+                    // Tolerance-based rather than "current >= target" so a bed that must cool
+                    // down to a lower configured temperature (operator declined the pre-heat)
+                    // is also recognized as ready, not just one that is still heating up.
+                    if (mBedCalibrationBedTemperature != 0 && Math.abs(currentTemperature - mBedCalibrationBedTemperature) <= BED_TEMPERATURE_READY_TOLERANCE) {
                         mBedStatusState.onNext(true);
                     }
                 });

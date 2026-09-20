@@ -4,6 +4,7 @@ package com.snapmaker.fabscreena400;
 import com.orhanobut.logger.Logger;
 
 import fabscreen.platform.base.BaseApplication;
+import fabscreen.platform.base.legacy.server.http.handlers.DashboardTelemetryHistory;
 import fabscreen.platform.base.lib.network.NetworkController;
 import fabscreen.platform.base.lib.parser.GcodeParser;
 import fabscreen.platform.base.lib.parser.IGcodeParser;
@@ -16,10 +17,12 @@ import fabscreen.platform.base.service.IHttpDownloadManager;
 import fabscreen.platform.base.service.ILanguage;
 import fabscreen.platform.base.service.IMachine;
 import fabscreen.platform.base.service.INetwork;
+import fabscreen.platform.base.service.IObicoService;
 import fabscreen.platform.base.service.IPreferences;
 import fabscreen.platform.base.service.IRemote;
 import fabscreen.platform.base.service.IRouter;
 import fabscreen.platform.base.service.MultiLanguageManager;
+import fabscreen.platform.base.service.ObicoService;
 import fabscreen.platform.base.service.Preferences;
 import fabscreen.platform.base.service.machine.BaseMachine;
 import fabscreen.platform.base.service.remote.S30RemoteService;
@@ -29,6 +32,7 @@ public class A400Application extends BaseApplication {
     @Override
     public void onCreate() {
         super.onCreate();
+        DashboardTelemetryHistory.getInstance().start();
         Logger.d("A400 Start! \nBuild: %s Version %s %s", BuildConfig.BUILD_TYPE, getAppVersionName(), BuildConfig.BUILD_RELEASE_DATE);
     }
 
@@ -76,6 +80,9 @@ public class A400Application extends BaseApplication {
         mServiceContainer.registerService(IPrintWorkspace.class, BasePrintWorkspace.class);
         mServiceContainer.registerService(IGcodeParser.class, GcodeParser.class);
         mServiceContainer.registerService(IHttpDownloadManager.class, HttpDownloadManager.class);
+        // Obico depends on the machine and print-workspace services above and is intentionally
+        // registered only for the Artisan build.
+        mServiceContainer.registerService(IObicoService.class, ObicoService.class);
     }
 
 }

@@ -840,7 +840,7 @@ class MainRequestHandler extends BaseRequestHandler {
             int value = StringToValueUtils.parseInt(led);
 
             Disposable sub = ServiceContainer.getInstance().getService(IMachine.class).getMachineController().getEnclosure()
-                    .setEnclosureLedLevel(value)
+                    .setEnclosureLedLevelByUser(value)
                     .doOnNext(success -> response.setStatus(success.isSuccess() ? StatusCode.SC_OK : StatusCode.SC_CONFLICT))
                     .flatMap(success -> ServiceContainer.getInstance().getService(IMachine.class).getMachineController().getEnclosure().getEnclosureStatusObservable())
                     .subscribe(status -> {

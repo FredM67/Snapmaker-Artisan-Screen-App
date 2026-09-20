@@ -10,6 +10,17 @@ add_library(serial-port
             SHARED
         src/main/cpp/SerialPort.cpp)
 
+# Direct USB Video Class capture used by the Artisan web dashboard. The
+# implementation talks to the kernel's uvcvideo V4L2 nodes, so no bundled
+# libuvc dependency is required.
+add_library(uvc-v4l2
+            SHARED
+        src/main/cpp/V4l2Native.cpp)
+
+set_target_properties(uvc-v4l2 PROPERTIES
+        CXX_STANDARD 11
+        CXX_STANDARD_REQUIRED YES)
+
 # Searches for a specified prebuilt library and stores the path as a
 # variable.
 find_library(log-lib log)
@@ -19,3 +30,4 @@ find_library(log-lib log)
 # build script, prebuilt third-party libraries, or system libraries.
 
 target_link_libraries(serial-port ${log-lib})
+target_link_libraries(uvc-v4l2 ${log-lib})

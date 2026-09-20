@@ -5,6 +5,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.hardware.usb.UsbDevice;
+import android.hardware.usb.UsbInterface;
 import android.hardware.usb.UsbManager;
 import android.os.storage.StorageManager;
 
@@ -80,17 +81,42 @@ public class FileManagerService implements IFileManagerService, UsbBroadcastRece
     @Override
     public void isHaveUsbDevices() {
         UsbManager manager = (UsbManager) mContext.getSystemService(Context.USB_SERVICE);
-        HashMap<String, UsbDevice> deviceList = manager.getDeviceList();
-        Logger.d("device list " + deviceList.isEmpty());
-        if (!deviceList.isEmpty()) {
-            mIsHaveUsbDevices.onNext(true);
-        } else {
-            if (!mFabUsbPartitions.isEmpty()) {
-                showDeviceState(false);
-            }
-            mFabUsbPartitions.clear();
-            mIsHaveUsbDevices.onNext(false);
+        if (manager == null) {
+            updateMassStoragePresence(false);
+            return;
         }
+        HashMap<String, UsbDevice> deviceList = manager.getDeviceList();
+        boolean hasMassStorage = false;
+        for (UsbDevice device : deviceList.values()) {
+            if (isMassStorageDevice(device)) {
+                hasMassStorage = true;
+                break;
+            }
+        }
+        Logger.d("mass storage device present " + hasMassStorage);
+        updateMassStoragePresence(hasMassStorage);
+    }
+
+    private void updateMassStoragePresence(boolean hasMassStorage) {
+        if (hasMassStorage) {
+            mIsHaveUsbDevices.onNext(true);
+            return;
+        }
+        if (!mFabUsbPartitions.isEmpty()) {
+            showDeviceState(false);
+        }
+        mFabUsbPartitions.clear();
+        mIsHaveUsbDevices.onNext(false);
+    }
+
+    private boolean isMassStorageDevice(UsbDevice usbDevice) {
+        if (usbDevice == null) return false;
+        int[] interfaceClasses = new int[usbDevice.getInterfaceCount()];
+        for (int i = 0; i < usbDevice.getInterfaceCount(); i++) {
+            UsbInterface usbInterface = usbDevice.getInterface(i);
+            interfaceClasses[i] = usbInterface == null ? -1 : usbInterface.getInterfaceClass();
+        }
+        return UsbDeviceClassifier.isMassStorage(usbDevice.getDeviceClass(), interfaceClasses);
     }
 
     private void checkUSBPartitions(List<IPartition> iPartitions) {
@@ -169,8 +195,11 @@ public class FileManagerService implements IFileManagerService, UsbBroadcastRece
 
     @Override
     public void deviceAttached(UsbDevice usbDevice) throws Exception {
-//        showDeviceState(true);
         Logger.d("USB deviceAttached: " + usbDevice);
+        if (!isMassStorageDevice(usbDevice)) {
+            Logger.d("Ignoring non-storage USB device attachment");
+            return;
+        }
         UsbManager usbManager = (UsbManager) mContext.getSystemService(Context.USB_SERVICE);
         if (usbManager == null) {
             return;
@@ -186,8 +215,11 @@ public class FileManagerService implements IFileManagerService, UsbBroadcastRece
 
     @Override
     public void deviceDetached(UsbDevice usbDevice) {
-//        showDeviceState(false);
         Logger.d("Device detached " + usbDevice);
+        if (!isMassStorageDevice(usbDevice)) {
+            Logger.d("Ignoring non-storage USB device detachment");
+            return;
+        }
         isHaveUsbDevices();
     }
 
@@ -229,6 +261,10 @@ public class FileManagerService implements IFileManagerService, UsbBroadcastRece
     @Override
     public void devicePermissionGranted(UsbDevice usbDevice) {
         Logger.d("USB devicePermissionGranted");
+        if (!isMassStorageDevice(usbDevice)) {
+            Logger.d("Ignoring permission result for non-storage USB device");
+            return;
+        }
         isHaveUsbDevices();
     }
 

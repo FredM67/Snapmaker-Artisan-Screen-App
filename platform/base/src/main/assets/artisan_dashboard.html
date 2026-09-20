@@ -4,6 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#07110f">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/manifest.webmanifest">
   <meta name="artisan-dashboard-token" content="__ARTISAN_DASHBOARD_TOKEN__">
   <title>Artisan · 3D Print Console</title>
   <style>
@@ -311,6 +314,17 @@
     }
 
     .job-layout > * { min-width: 0; }
+
+    .job-layout.with-dashboard-camera {
+      grid-template-columns: minmax(130px, .4fr) minmax(260px, 1.25fr) minmax(280px, 1fr);
+      gap: 12px;
+    }
+
+    .dashboard-camera-preview { min-width: 0; }
+    .dashboard-camera-preview .camera-stage { min-height: 0; height: clamp(180px, 16vw, 230px); border: 1px solid var(--line-bright); }
+    .dashboard-camera-preview .camera-frame { width: 100%; height: 100%; max-height: none; object-fit: contain; }
+    .dashboard-camera-preview .camera-empty { padding: 10px; font-size: .5625rem; }
+    .dashboard-camera-preview .camera-empty strong { font-size: .75rem; }
 
     .preview {
       position: relative;
@@ -675,6 +689,7 @@
       html[data-dashboard-density="compact"] #telemetry-chart-section { grid-area: chart; min-width: 0; margin: 0; }
       html[data-dashboard-density="compact"] #page-dashboard > footer { display: none; }
       html[data-dashboard-density="compact"] #job-panel .job-layout { grid-template-columns: minmax(170px, .45fr) minmax(0, 1.8fr); gap: 12px; }
+      html[data-dashboard-density="compact"] #job-panel .job-layout.with-dashboard-camera { grid-template-columns: minmax(120px, .35fr) minmax(260px, 1.25fr) minmax(280px, 1fr); gap: 10px; }
       html[data-dashboard-density="compact"] #job-panel .preview { height: 140px; min-height: 140px; }
       html[data-dashboard-density="compact"] #job-panel .preview-cube { width: 42px; height: 42px; }
       html[data-dashboard-density="compact"] #job-panel .progress-head { margin-bottom: 4px; }
@@ -703,6 +718,9 @@
     }
 
     @media (max-width: 1060px) {
+      .job-layout.with-dashboard-camera { grid-template-columns: minmax(180px, .58fr) minmax(0, 1.8fr); }
+      .dashboard-camera-preview { grid-column: 1 / -1; width: min(100%, 640px); }
+      .dashboard-camera-preview .camera-stage { height: clamp(180px, 35vw, 360px); }
       .thermal-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .thermal-card.bed { grid-column: 1 / -1; }
       .machine-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -714,6 +732,8 @@
       .updated { display: none; }
       .shell { padding: 16px; }
       .job-layout { grid-template-columns: minmax(0, 1fr); }
+      .job-layout.with-dashboard-camera { grid-template-columns: minmax(0, 1fr); }
+      .dashboard-camera-preview { grid-column: auto; width: 100%; }
       .preview { min-height: 210px; }
       .time-grid { grid-template-columns: repeat(2, 1fr); }
       .metric:nth-child(3) { border-left: 0; }
@@ -1096,6 +1116,44 @@
     .mesh-table th:first-child { left: 0; z-index: 2; }
     .mesh-table td:first-child { position: sticky; left: 0; color: var(--accent); background: var(--surface); }
 
+    /* Camera ------------------------------------------------------------ */
+    .camera-layout { display: grid; grid-template-columns: minmax(0, 1.75fr) minmax(250px, .55fr); gap: 12px; }
+    .camera-view-panel { min-width: 0; overflow: hidden; }
+    .camera-toolbar { min-height: 58px; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+    .camera-toolbar-source { min-width: 0; overflow: hidden; color: var(--muted); font-family: var(--mono); font-size: .625rem; text-overflow: ellipsis; white-space: nowrap; }
+    .camera-stage {
+      position: relative;
+      min-height: 360px;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      background:
+        linear-gradient(rgba(49, 224, 204, .018) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(49, 224, 204, .018) 1px, transparent 1px),
+        #020605;
+      background-size: 32px 32px;
+    }
+    .camera-frame { display: block; width: 100%; max-height: min(70vh, 720px); object-fit: contain; }
+    .camera-empty { position: absolute; inset: 0; display: grid; align-content: center; justify-items: center; gap: 8px; padding: 28px; color: var(--faint); text-align: center; font-family: var(--mono); font-size: .6875rem; }
+    .camera-empty strong { color: var(--muted); font-family: var(--sans); font-size: 1rem; }
+    .camera-empty.error strong, .camera-status.error { color: var(--danger); }
+    .camera-side { display: grid; align-content: start; gap: 12px; }
+    .camera-control-panel, .camera-info-panel { padding: 17px; }
+    .camera-control-panel h3, .camera-info-panel h3 { margin: 0 0 15px; color: var(--muted); font-family: var(--mono); font-size: .625rem; letter-spacing: .1em; text-transform: uppercase; }
+    .camera-control-panel > .camera-help { display: block; margin: 0 0 10px; color: var(--faint); font-size: .625rem; line-height: 1.4; }
+    .camera-field { display: grid; gap: 6px; padding: 10px 0; border-top: 1px solid var(--line); }
+    .camera-field label { color: var(--faint); font-size: .625rem; }
+    .camera-field .camera-help { color: var(--faint); font-size: .625rem; line-height: 1.4; overflow-wrap: anywhere; }
+    .camera-field .select-field { width: 100%; }
+    .camera-field .field { min-width: 0; }
+    .camera-fps-control { display: grid; grid-template-columns: minmax(90px, 1fr) 44px; align-items: center; gap: 9px; }
+    .camera-fps-control input { width: 100%; accent-color: var(--accent); }
+    .camera-info-grid { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 9px 12px; margin: 0; font-size: .625rem; }
+    .camera-info-grid dt { color: var(--faint); }
+    .camera-info-grid dd { min-width: 0; margin: 0; color: var(--text); text-align: right; font-family: var(--mono); overflow-wrap: anywhere; }
+    .camera-status { min-height: 34px; margin-top: 12px; color: var(--faint); font-size: .625rem; }
+    .camera-setting-note { color: var(--faint); font-size: .625rem; }
+
     /* Settings ----------------------------------------------------------- */
     .settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
     .settings-panel { padding: 18px; }
@@ -1111,6 +1169,25 @@
     .range-value { color: var(--accent); text-align: right; font-family: var(--mono); font-size: 11px; }
     .settings-foot { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 12px; padding: 14px 16px; }
     .settings-panel.chart-settings-panel { grid-column: 1 / -1; }
+    .settings-panel.obico-settings-panel { grid-column: 1 / -1; }
+    .obico-settings-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+    .obico-settings-head .settings-intro { max-width: 780px; }
+    .obico-settings-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 28px; }
+    .obico-settings-panel .setting-control .field { width: 100%; max-width: 380px; }
+    .obico-link-control { display: grid; grid-template-columns: minmax(120px, 190px) auto; gap: 8px; width: 100%; max-width: 380px; }
+    .obico-link-control .field { min-width: 0; letter-spacing: .16em; }
+    .obico-link-methods { margin-top: 14px; }
+    .obico-link-method { max-width: 720px; min-width: 0; padding: 14px; border: 1px solid var(--line); background: var(--surface-2); }
+    .obico-link-method h4 { margin: 0 0 7px; color: var(--text); font-size: .75rem; }
+    .obico-link-method p { margin: 0 0 12px; color: var(--muted); font-size: .625rem; line-height: 1.5; }
+    .obico-link-method .obico-link-control { max-width: none; }
+    .obico-link-note { margin: 11px 0 0; color: var(--faint); font-size: .625rem; line-height: 1.5; }
+    .obico-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+    .obico-status-copy { flex: 1 1 300px; margin: 0; }
+    .obico-security-copy { margin: 10px 0 0; color: var(--faint); font-size: .625rem; }
+    .obico-diagnostics { display: flex; flex-wrap: wrap; gap: 6px 24px; padding-top: 13px; border-top: 1px solid var(--line); color: var(--muted); font-size: .6875rem; }
+    .obico-diagnostics p { margin: 0; }
+    .obico-diagnostics-note { flex-basis: 100%; color: var(--faint); font-size: .625rem; }
     .chart-setting-fieldset { min-width: 0; margin: 14px 0 0; padding: 0; border: 0; }
     .chart-setting-fieldset legend { padding: 0; color: var(--faint); font-family: var(--mono); font-size: .625rem; letter-spacing: .08em; text-transform: uppercase; }
     .chart-setting-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 18px; margin-top: 7px; border-bottom: 1px solid var(--line); }
@@ -1214,7 +1291,8 @@
     html[data-theme="light"] .field,
     html[data-theme="light"] .select-field { background: #ffffff; }
     html[data-theme="light"] .console-log,
-    html[data-theme="light"] .mesh-stage { background: #f7fbf9; }
+    html[data-theme="light"] .mesh-stage,
+    html[data-theme="light"] .camera-stage { background-color: #f7fbf9; }
     html[data-theme="light"] .console-log {
       background: linear-gradient(rgba(8, 127, 114, .035) 1px, transparent 1px), #f7fbf9;
       background-size: 100% 26px;
@@ -1233,7 +1311,7 @@
     @media (max-width: 1180px) {
       .file-list-head, .file-row { grid-template-columns: minmax(210px, 1.6fr) minmax(130px, 1fr) 90px; }
       .file-list-head span:last-child, .file-date { display: none; }
-      .mesh-layout { grid-template-columns: 1fr; }
+      .mesh-layout, .camera-layout { grid-template-columns: 1fr; }
       .mesh-side { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
     }
 
@@ -1247,6 +1325,7 @@
       .mobile-menu { display: block; margin-right: auto; }
       .topbar { align-items: center; }
       .storage-grid, .settings-grid { grid-template-columns: 1fr; }
+      .obico-settings-columns { grid-template-columns: 1fr; }
     }
 
     @media (max-width: 700px) {
@@ -1261,6 +1340,7 @@
       .file-size { text-align: right; }
       .telemetry-chart-stage { min-height: 300px; }
       .telemetry-chart-canvas { height: 300px; }
+      .camera-stage { min-height: 260px; }
       .chart-setting-grid { grid-template-columns: 1fr; }
       .console-entry { grid-template-columns: 58px 14px minmax(0, 1fr); gap: 5px; }
       .console-log { padding: 12px 10px; font-size: .625rem; }
@@ -1346,8 +1426,11 @@
       <a class="nav-link" href="#/bed-mesh" data-route="bed-mesh">
         <span class="nav-index">04</span><span class="nav-label">Bed Mesh</span>
       </a>
+      <a class="nav-link" href="#/camera" data-route="camera">
+        <span class="nav-index">05</span><span class="nav-label">Camera</span>
+      </a>
       <a class="nav-link" href="#/settings" data-route="settings">
-        <span class="nav-index">05</span><span class="nav-label">Settings</span>
+        <span class="nav-index">06</span><span class="nav-label">Settings</span>
       </a>
     </nav>
     <div class="sidebar-foot">
@@ -1406,7 +1489,7 @@
     <div class="alerts" id="alerts" role="status" aria-live="polite"></div>
 
     <section class="panel job-panel" id="job-panel" aria-labelledby="job-title">
-      <div class="job-layout">
+      <div class="job-layout" id="job-layout">
         <div class="preview">
           <img id="job-thumbnail" alt="3D print preview" hidden>
           <div class="preview-empty" id="preview-empty">
@@ -1443,6 +1526,15 @@
             <div class="blocked-reason" id="blocked-reason"></div>
           </div>
         </div>
+        <section class="dashboard-camera-preview" id="dashboard-camera-preview" aria-label="Camera preview" hidden>
+          <div class="camera-stage">
+            <img class="camera-frame" id="dashboard-camera-frame" alt="Live view from the selected camera" hidden>
+            <div class="camera-empty" id="dashboard-camera-empty">
+              <strong id="dashboard-camera-empty-title">Opening camera</strong>
+              <span id="dashboard-camera-empty-copy">Waiting for the first frame…</span>
+            </div>
+          </div>
+        </section>
       </div>
     </section>
 
@@ -1663,6 +1755,79 @@
         </section>
       </section>
 
+      <section class="page" id="page-camera" data-page="camera" aria-labelledby="camera-title" hidden>
+        <h2 class="sr-only" id="camera-title">Camera</h2>
+        <div class="page-heading">
+          <p class="eyebrow">Video</p>
+          <div class="page-actions">
+            <button class="icon-button" type="button" id="camera-reconnect">Reconnect</button>
+            <button class="icon-button primary" type="button" id="camera-rescan">Rescan cameras</button>
+          </div>
+        </div>
+
+        <div class="camera-layout">
+          <section class="panel camera-view-panel" aria-label="Camera video">
+            <div class="toolbar camera-toolbar">
+              <span class="tiny-pill" id="camera-state">Idle</span>
+              <span class="camera-toolbar-source" id="camera-toolbar-source">No camera selected</span>
+              <div class="toolbar-spacer"></div>
+              <span class="status-copy" id="camera-frame-age">—</span>
+            </div>
+            <div class="camera-stage" id="camera-stage">
+              <img class="camera-frame" id="camera-frame" alt="Live view from the selected camera" hidden>
+              <div class="camera-empty" id="camera-empty">
+                <strong id="camera-empty-title">Camera is idle</strong>
+                <span id="camera-empty-copy">Opening the selected camera…</span>
+              </div>
+            </div>
+          </section>
+
+          <aside class="camera-side" aria-label="Camera controls and status">
+            <section class="panel camera-control-panel">
+              <h3>Capture</h3>
+              <label class="channel-toggle" for="camera-enabled"><span>Camera</span><input type="checkbox" role="switch" id="camera-enabled" checked></label>
+              <label class="channel-toggle" for="camera-show-dashboard"><span>Show on Dashboard</span><input type="checkbox" role="switch" id="camera-show-dashboard" aria-describedby="camera-show-dashboard-help"></label>
+              <span class="camera-help" id="camera-show-dashboard-help">Show a live camera view beside the print job. Saved for this browser.</span>
+              <div class="camera-field">
+                <label for="camera-source">Video source</label>
+                <select class="select-field" id="camera-source"><option value="">Automatic USB selection</option><option value="mjpeg">IP camera (MJPEG)</option><option value="rtsp">IP camera (RTSP)</option></select>
+              </div>
+              <div class="camera-field" id="camera-url-row" hidden>
+                <label for="camera-url" id="camera-url-label">MJPEG stream URL</label>
+                <input class="field" type="text" id="camera-url" placeholder="http://camera.local/stream" maxlength="2048" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false">
+                <span class="camera-help" id="camera-url-help">Use the camera's full HTTP or HTTPS stream address.</span>
+              </div>
+              <div class="camera-field" id="camera-resolution-row">
+                <label for="camera-resolution" id="camera-resolution-label">Capture resolution</label>
+                <select class="select-field" id="camera-resolution">
+                  <option value="640x360">640 × 360</option>
+                  <option value="640x480">640 × 480</option>
+                  <option value="1280x720" selected>1280 × 720</option>
+                  <option value="1920x1080">1920 × 1080</option>
+                </select>
+                <span class="camera-help" id="camera-resolution-help">Lower settings use less USB bandwidth and processor time.</span>
+              </div>
+              <div class="camera-field" id="camera-fps-row">
+                <label for="camera-fps">Preview frame rate</label>
+                <div class="camera-fps-control"><input type="range" id="camera-fps" min="1" max="10" step="1" value="5" aria-describedby="camera-fps-value"><output class="range-value" id="camera-fps-value" for="camera-fps">5 FPS</output></div>
+              </div>
+              <div class="camera-status" id="camera-control-status" role="status" aria-live="polite">Loading camera configuration…</div>
+            </section>
+
+            <section class="panel camera-info-panel">
+              <h3>Video stream</h3>
+              <dl class="camera-info-grid">
+                <dt>Camera</dt><dd id="camera-info-name">—</dd>
+                <dt>Format</dt><dd id="camera-info-format">—</dd>
+                <dt>Resolution</dt><dd id="camera-info-resolution">—</dd>
+                <dt>Frame rate</dt><dd id="camera-info-fps">—</dd>
+                <dt>Last frame</dt><dd id="camera-info-last-frame">—</dd>
+              </dl>
+            </section>
+          </aside>
+        </div>
+      </section>
+
       <section class="page" id="page-settings" data-page="settings" aria-labelledby="settings-title" hidden>
         <h2 class="sr-only" id="settings-title">Settings</h2>
         <div class="page-heading">
@@ -1689,15 +1854,101 @@
             </div>
           </section>
 
+          <section class="panel settings-panel">
+            <h3>Camera</h3>
+            <p class="settings-intro">Use a USB UVC camera, an MJPEG IP camera, or an RTSP IP camera. Capture runs while the Camera page is viewed, the optional Dashboard preview is visible, or Obico camera uploads are enabled.</p>
+            <div class="setting-row">
+              <div class="setting-label"><strong>Camera</strong><span>Disable the selected camera without disconnecting it.</span></div>
+              <div class="setting-control"><label class="check-control" for="setting-camera-enabled"><input type="checkbox" id="setting-camera-enabled" checked> Enabled</label></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-label"><strong>Video source</strong><span>Select a connected USB camera or enter an MJPEG or RTSP stream URL.</span></div>
+              <div class="setting-control"><select class="select-field" id="setting-camera-source"><option value="">Automatic USB selection</option><option value="mjpeg">IP camera (MJPEG)</option><option value="rtsp">IP camera (RTSP)</option></select></div>
+            </div>
+            <div class="setting-row" id="setting-camera-url-row" hidden>
+              <div class="setting-label"><strong id="setting-camera-url-label">MJPEG stream URL</strong><span id="setting-camera-url-help">Use the camera's full HTTP or HTTPS stream address. A blank field keeps the saved URL.</span></div>
+              <div class="setting-control"><input class="field" type="text" id="setting-camera-url" placeholder="http://camera.local/stream" maxlength="2048" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" aria-label="Camera stream URL"></div>
+            </div>
+            <div class="setting-row" id="setting-camera-resolution-row">
+              <div class="setting-label"><strong id="setting-camera-resolution-label">Resolution</strong><span id="setting-camera-resolution-help">Lower settings use less USB bandwidth and processor time.</span></div>
+              <div class="setting-control">
+                <select class="select-field" id="setting-camera-resolution">
+                  <option value="640x360">640 × 360</option>
+                  <option value="640x480">640 × 480</option>
+                  <option value="1280x720" selected>1280 × 720</option>
+                  <option value="1920x1080">1920 × 1080</option>
+                </select>
+              </div>
+            </div>
+            <div class="setting-row" id="setting-camera-fps-row">
+              <div class="setting-label"><strong>Preview frame rate</strong><span>Published frames are limited to 10 FPS to protect printer responsiveness.</span></div>
+              <div class="setting-control range-control"><input type="range" id="setting-camera-fps" min="1" max="10" step="1" value="5" aria-label="Camera preview frame rate" aria-describedby="setting-camera-fps-value"><output class="range-value" id="setting-camera-fps-value" for="setting-camera-fps">5 FPS</output></div>
+            </div>
+            <p class="camera-setting-note" id="setting-camera-status" role="status" aria-live="polite">Loading printer camera settings…</p>
+          </section>
+
+          <section class="panel settings-panel obico-settings-panel">
+            <div class="obico-settings-head">
+              <div>
+                <h3>Obico remote monitoring</h3>
+                <p class="settings-intro">Connect FabScreen directly to Obico for remote status, notifications, camera monitoring, and optional print controls. No additional computer is required.</p>
+              </div>
+              <span class="state-pill" id="setting-obico-state">Loading</span>
+            </div>
+            <div class="obico-settings-columns">
+              <div>
+                <div class="setting-row">
+                  <div class="setting-label"><strong>Obico connection</strong><span>Reconnect automatically while FabScreen is running.</span></div>
+                  <div class="setting-control"><label class="check-control" for="setting-obico-enabled"><input type="checkbox" id="setting-obico-enabled"> Enabled</label></div>
+                </div>
+                <div class="setting-row">
+                  <div class="setting-label"><strong>Server URL</strong><span>Use Obico Cloud or the base URL of a self-hosted server.</span></div>
+                  <div class="setting-control"><input class="field" type="url" id="setting-obico-server" value="https://app.obico.io" maxlength="2048" autocomplete="url" autocapitalize="none" spellcheck="false" aria-label="Obico server URL"></div>
+                </div>
+              </div>
+              <div>
+                <div class="setting-row">
+                  <div class="setting-label"><strong>Remote printer control</strong><span>Allow Obico to move or home the toolhead, control heaters, extrude, tune an active print, pause, resume, cancel, and start an Obico G-code file. FabScreen validates the live machine state and accepts only these known controls.</span></div>
+                  <div class="setting-control"><label class="check-control" for="setting-obico-remote-control"><input type="checkbox" id="setting-obico-remote-control"> Allow</label></div>
+                </div>
+                <div class="setting-row">
+                  <div class="setting-label"><strong>Camera uploads</strong><span>Upload snapshots from the selected camera for monitoring and failure detection.</span></div>
+                  <div class="setting-control"><label class="check-control" for="setting-obico-camera"><input type="checkbox" id="setting-obico-camera"> Allow</label></div>
+                </div>
+              </div>
+            </div>
+            <div class="obico-link-methods">
+              <section class="obico-link-method" aria-labelledby="setting-obico-method-obico">
+                <h4 id="setting-obico-method-obico">Link Obico to Artisan Web</h4>
+                <p>In Obico, choose Link New Printer → OctoPrint → Next (web) or Yes, plugin is installed (mobile) → Switch to Manual Setup. Enter Obico's six-digit verification code here, then select Verify code. You do not need to install OctoPrint.</p>
+                <div class="setting-control obico-link-control"><input class="field" type="text" id="setting-obico-code" maxlength="6" inputmode="numeric" pattern="[0-9]{6}" autocomplete="one-time-code" aria-label="Six-digit code supplied by Obico" placeholder="Six-digit code"><button class="icon-button" type="button" id="setting-obico-link" disabled>Verify code</button></div>
+              </section>
+            </div>
+            <p class="obico-link-note">Use Obico's Manual Setup code, not its nearby-printer Link button.</p>
+            <div class="obico-diagnostics" aria-label="Obico camera and monitoring diagnostics">
+              <p id="setting-obico-last-image">Last image accepted by Obico: Unknown</p>
+              <p id="setting-obico-watch-request">Obico requests monitoring: Unknown</p>
+              <p id="setting-obico-remote-viewing">Remote viewer: Unknown</p>
+              <p class="obico-diagnostics-note">A monitoring request does not confirm that Obico failure detection is enabled or processing images. Check Failure Detection in Obico for its actual status.</p>
+            </div>
+            <p class="obico-security-copy">The printer credential is encrypted on this Artisan. FabScreen reports only whether a credential exists; it never sends the credential to this dashboard.</p>
+            <div class="obico-actions">
+              <p class="status-copy obico-status-copy" id="setting-obico-status" role="status" aria-live="polite">Loading Obico configuration…</p>
+              <button class="icon-button primary" type="button" id="setting-obico-save">Save settings</button>
+              <button class="icon-button" type="button" id="setting-obico-test" disabled>Test connection</button>
+              <button class="icon-button danger" type="button" id="setting-obico-unlink" disabled>Unlink</button>
+            </div>
+          </section>
+
           <section class="panel settings-panel chart-settings-panel">
             <h3>Temperature &amp; cooling graph</h3>
-            <p class="settings-intro">Choose whether the Dashboard graph is shown, its time window, and every series drawn in this browser.</p>
+            <p class="settings-intro">FabScreen keeps a rolling 30-minute history while running, even when this page is closed. Choose the graph window and visible series here.</p>
             <div class="setting-row">
               <div class="setting-label"><strong>Show graph</strong><span>Display live temperature and cooling history on the Dashboard.</span></div>
               <div class="setting-control"><label class="check-control" for="setting-chart-visible"><input type="checkbox" id="setting-chart-visible" checked> Show</label></div>
             </div>
             <div class="setting-row">
-              <div class="setting-label"><strong>History window</strong><span>History is held in memory only and clears when this page closes.</span></div>
+              <div class="setting-label"><strong>History window</strong><span>FabScreen retains up to 30 minutes in memory; history resets if the app restarts.</span></div>
               <div class="setting-control">
                 <select class="select-field" id="setting-chart-window" aria-label="Graph history window">
                   <option value="5">Last 5 minutes</option>
@@ -2059,6 +2310,28 @@
       var meshDragLastY = 0;
       var meshDrawFrame = 0;
       var meshIgnoreMouseUntil = 0;
+      var cameraSnapshot = null;
+      var cameraSources = [];
+      var cameraSequence = 0;
+      var cameraPollGeneration = 0;
+      var cameraFeedActive = false;
+      var cameraPollTimer = 0;
+      var cameraStatusTimer = 0;
+      var cameraRequestRunning = false;
+      var cameraSettingsRunning = false;
+      var cameraSettingsQueuedPrefix = null;
+      var cameraDraftSource = null;
+      var cameraDraftResolution = null;
+      var cameraUrlDirty = false;
+      var cameraUrlApplyTimer = 0;
+      var cameraObjectUrl = "";
+      var cameraLastFrameAt = 0;
+      var cameraFrameAbortController = null;
+      var cameraClientId = createCameraClientId();
+      var obicoSnapshot = null;
+      var obicoRequestRunning = false;
+      var obicoDirty = false;
+      var obicoPollTimer = 0;
       var enclosureSnapshot = null;
       var enclosureLoading = false;
       var enclosureLastLoadedAt = 0;
@@ -2069,6 +2342,8 @@
       var enclosurePreferredPercent = { led: 100, fan: 100 };
       var openEnclosurePopover = "";
       var chartHistory = [];
+      var chartHistoryRequest = null;
+      var chartHistoryReloadPending = false;
       var chartFanDefinitions = {};
       var chartResizeTimer = 0;
       var chartConnected = null;
@@ -2174,6 +2449,7 @@
           meshView: "2d",
           meshScale: 10,
           meshValues: true,
+          showCameraOnDashboard: false,
           chartVisible: true,
           chartWindowMinutes: 10,
           chartSeries: {
@@ -2251,6 +2527,7 @@
         if (stored.meshView === "2d" || stored.meshView === "3d") defaults.meshView = stored.meshView;
         if (finite(Number(stored.meshScale))) defaults.meshScale = clamp(Math.round(Number(stored.meshScale)), 4, 24);
         if (typeof stored.meshValues === "boolean") defaults.meshValues = stored.meshValues;
+        if (typeof stored.showCameraOnDashboard === "boolean") defaults.showCameraOnDashboard = stored.showCameraOnDashboard;
         if (typeof stored.chartVisible === "boolean") defaults.chartVisible = stored.chartVisible;
         else if (typeof stored.showTelemetryChart === "boolean") defaults.chartVisible = stored.showTelemetryChart;
         if (chartWindowOptions.indexOf(Number(stored.chartWindowMinutes)) >= 0) defaults.chartWindowMinutes = Number(stored.chartWindowMinutes);
@@ -2345,6 +2622,724 @@
             }
             return body;
           });
+        });
+      }
+
+      /* Obico --------------------------------------------------------- */
+      function obicoObject(value) {
+        return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+      }
+
+      function obicoConfiguration(data) {
+        data = obicoObject(data);
+        return obicoObject(data.config || data.configuration || data.settings || data);
+      }
+
+      function obicoConnection(data) {
+        data = obicoObject(data);
+        return obicoObject(data.status || data.connection || data);
+      }
+
+      function obicoOperation(data) {
+        data = obicoObject(data);
+        return obicoObject(data.operation || data.linkOperation || {});
+      }
+
+      function obicoHasConfiguration(data) {
+        var configuration = obicoConfiguration(data);
+        return Object.prototype.hasOwnProperty.call(configuration, "enabled")
+          || Object.prototype.hasOwnProperty.call(configuration, "serverUrl")
+          || Object.prototype.hasOwnProperty.call(configuration, "linked");
+      }
+
+      function setObicoBusy(busy) {
+        obicoRequestRunning = !!busy;
+        ["setting-obico-save", "setting-obico-link",
+          "setting-obico-test", "setting-obico-unlink"].forEach(function (id) {
+          el(id).disabled = !!busy;
+        });
+        if (!busy) updateObicoActionAvailability();
+      }
+
+      function updateObicoActionAvailability() {
+        var configuration = obicoConfiguration(obicoSnapshot);
+        var linked = configuration.linked === true || obicoConnection(obicoSnapshot).linked === true;
+        var code = String(el("setting-obico-code").value || "");
+        el("setting-obico-link").disabled = obicoRequestRunning || linked || !/^\d{6}$/.test(code);
+        el("setting-obico-test").disabled = obicoRequestRunning || !linked;
+        el("setting-obico-unlink").disabled = obicoRequestRunning || !linked;
+        el("setting-obico-save").disabled = obicoRequestRunning;
+      }
+
+      function obicoAcceptedImageAge(ageMillis) {
+        if (!finite(ageMillis) || ageMillis < 0) return "Unknown";
+        if (ageMillis < 1500) return "now";
+        if (ageMillis < 60000) return Math.round(ageMillis / 1000) + "s ago";
+        if (ageMillis < 3600000) return Math.round(ageMillis / 60000) + "m ago";
+        return Math.round(ageMillis / 3600000) + "h ago";
+      }
+
+      function renderObicoState(data) {
+        var previous = obicoSnapshot;
+        if (!obicoHasConfiguration(data) && obicoHasConfiguration(previous)) {
+          var response = obicoObject(data);
+          var merged = {};
+          Object.keys(obicoObject(previous)).forEach(function (key) { merged[key] = previous[key]; });
+          Object.keys(response).forEach(function (key) { merged[key] = response[key]; });
+          data = merged;
+        }
+        obicoSnapshot = obicoObject(data);
+        var configuration = obicoConfiguration(obicoSnapshot);
+        var connection = obicoConnection(obicoSnapshot);
+        var operation = obicoOperation(obicoSnapshot);
+        var linked = configuration.linked === true || connection.linked === true;
+        var enabled = configuration.enabled === true;
+
+        if (!obicoDirty) {
+          el("setting-obico-enabled").checked = enabled;
+          el("setting-obico-server").value = String(configuration.serverUrl || "https://app.obico.io");
+          el("setting-obico-remote-control").checked = configuration.remoteControlEnabled === true;
+          el("setting-obico-camera").checked = configuration.cameraUploadsEnabled === true;
+        }
+
+        var state = String(connection.state || configuration.state || "").toUpperCase();
+        if (!state) state = linked ? (enabled ? "CONNECTING" : "DISABLED") : "NOT_LINKED";
+        var stateLabels = {
+          DISABLED: "Disabled",
+          NOT_LINKED: "Not linked",
+          CONNECTING: "Connecting",
+          CONNECTED: "Connected",
+          RETRYING: "Retrying",
+          ERROR: "Attention"
+        };
+        var stateKind = state === "CONNECTED" ? "active" : state === "ERROR" ? "error" : "paused";
+        setPill(el("setting-obico-state"), stateLabels[state] || state.replace(/_/g, " "), stateKind);
+
+        var message = String(operation.message || connection.message || configuration.message || "");
+        if (!message) {
+          message = state === "CONNECTED" ? "FabScreen is connected to Obico."
+            : linked ? "Printer linked; waiting for the Obico connection."
+              : "Enter the six-digit verification code from Obico to link this printer.";
+        }
+        text("setting-obico-status", message);
+        el("setting-obico-status").className = "status-copy obico-status-copy"
+          + (state === "ERROR" ? " error" : state === "CONNECTED" ? " good" : "");
+
+        var lastImageAt = Number(connection.lastSnapshotAtMillis);
+        var serverImageAge = Number(connection.lastSnapshotAgeMillis);
+        var imageAge = finite(lastImageAt) && lastImageAt > 0
+          ? (finite(serverImageAge) && serverImageAge >= 0
+            ? serverImageAge : Math.max(0, Date.now() - lastImageAt)) : -1;
+        var imageMessage = imageAge < 0 ? "No image accepted yet"
+          : obicoAcceptedImageAge(imageAge);
+        if (imageAge > 120000 && state === "CONNECTED" && configuration.cameraUploadsEnabled === true) {
+          imageMessage += " (check uploads if a print is active)";
+        }
+        text("setting-obico-last-image", "Last image accepted by Obico: " + imageMessage);
+        var watchStatusKnown = state === "CONNECTED"
+          && Number(connection.lastRemoteWatchAtMillis) > 0;
+        text("setting-obico-watch-request", "Obico requests monitoring: "
+          + (watchStatusKnown ? (connection.remoteShouldWatch === true ? "Yes" : "No") : "Unknown"));
+        text("setting-obico-remote-viewing", "Remote viewer: "
+          + (watchStatusKnown ? (connection.remoteViewing === true ? "Active" : "None reported") : "Unknown"));
+
+        if (linked) el("setting-obico-code").value = "";
+        updateObicoActionAvailability();
+      }
+
+      function scheduleObicoPoll(delay) {
+        window.clearTimeout(obicoPollTimer);
+        if (activeRoute !== "settings" || document.hidden) return;
+        obicoPollTimer = window.setTimeout(function () {
+          loadObicoConfiguration(false).catch(function () {});
+        }, finite(delay) ? delay : 3000);
+      }
+
+      function loadObicoConfiguration(showFailure) {
+        return dashboardRequest("/api/dashboard/obico/config", { method: "GET" }).then(function (data) {
+          renderObicoState(data);
+          scheduleObicoPoll(3000);
+          return data;
+        }).catch(function (error) {
+          text("setting-obico-status", error.message || "Unable to read Obico configuration.");
+          el("setting-obico-status").className = "status-copy obico-status-copy error";
+          setPill(el("setting-obico-state"), "Unavailable", "error");
+          scheduleObicoPoll(5000);
+          if (showFailure) toast(error.message || "Unable to read Obico configuration.", true);
+          throw error;
+        });
+      }
+
+      function obicoConfigurationQuery() {
+        var serverUrl = String(el("setting-obico-server").value || "").trim();
+        return "?enabled=" + encodeURIComponent(el("setting-obico-enabled").checked ? "true" : "false")
+          + "&serverUrl=" + encodeURIComponent(serverUrl)
+          + "&allowInsecureServer=false"
+          + "&remoteControlEnabled=" + encodeURIComponent(el("setting-obico-remote-control").checked ? "true" : "false")
+          + "&cameraUploadsEnabled=" + encodeURIComponent(el("setting-obico-camera").checked ? "true" : "false");
+      }
+
+      function saveObicoConfiguration(showSuccess) {
+        if (obicoRequestRunning) return Promise.reject(new Error("Another Obico request is still running."));
+        setObicoBusy(true);
+        text("setting-obico-status", "Saving Obico settings…");
+        return dashboardRequest("/api/dashboard/obico/config" + obicoConfigurationQuery(), {
+          method: "POST"
+        }).then(function (data) {
+          obicoDirty = false;
+          renderObicoState(data);
+          setObicoBusy(false);
+          if (showSuccess) toast("Obico settings saved on the Artisan.", false);
+          return data;
+        }, function (error) {
+          setObicoBusy(false);
+          text("setting-obico-status", error.message || "Unable to save Obico settings.");
+          el("setting-obico-status").className = "status-copy obico-status-copy error";
+          if (showSuccess) toast(error.message || "Unable to save Obico settings.", true);
+          throw error;
+        });
+      }
+
+      function runObicoAction(endpoint, pendingMessage, successMessage, code) {
+        setObicoBusy(true);
+        text("setting-obico-status", pendingMessage);
+        var suffix = code === undefined ? "" : "?code=" + encodeURIComponent(code);
+        return dashboardRequest(endpoint + suffix, { method: "POST" }).then(function (data) {
+          renderObicoState(data);
+          setObicoBusy(false);
+          if (successMessage) toast(successMessage, false);
+          scheduleObicoPoll(500);
+          return data;
+        }, function (error) {
+          setObicoBusy(false);
+          text("setting-obico-status", error.message || "The Obico request failed.");
+          el("setting-obico-status").className = "status-copy obico-status-copy error";
+          toast(error.message || "The Obico request failed.", true);
+          throw error;
+        });
+      }
+
+      function beginObicoLink(code) {
+        // Starting a link is an explicit request to connect; avoid completing the link into a
+        // confusing disabled state when this is the first Obico setup.
+        el("setting-obico-enabled").checked = true;
+        obicoDirty = true;
+        saveObicoConfiguration(false).then(function () {
+          return runObicoAction(
+            "/api/dashboard/obico/link",
+            "Verifying the Obico code…",
+            "Obico verification started.",
+            code
+          );
+        }).catch(function () { /* The failing step already reported its error. */ });
+      }
+
+      /* Camera --------------------------------------------------------- */
+      function cameraUrlApi() { return window.URL || window.webkitURL; }
+
+      function cameraFeedVisible() {
+        return !document.hidden && (activeRoute === "camera"
+          || (activeRoute === "dashboard" && settings.showCameraOnDashboard));
+      }
+
+      function syncDashboardCameraPreview() {
+        var visible = settings.showCameraOnDashboard;
+        el("camera-show-dashboard").checked = visible;
+        el("dashboard-camera-preview").hidden = !visible;
+        el("job-layout").classList.toggle("with-dashboard-camera", visible);
+        if (!visible) {
+          el("dashboard-camera-frame").removeAttribute("src");
+          el("dashboard-camera-frame").hidden = true;
+        }
+      }
+
+      function createCameraClientId() {
+        return "web-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 12);
+      }
+
+      function cameraResolutionValue(width, height) {
+        var value = String(Number(width) || 1280) + "x" + String(Number(height) || 720);
+        return ["640x360", "640x480", "1280x720", "1920x1080"].indexOf(value) >= 0 ? value : "1280x720";
+      }
+
+      function setCameraEmpty(title, copy, error) {
+        ["camera", "dashboard-camera"].forEach(function (prefix) {
+          text(prefix + "-empty-title", title || "Camera is idle");
+          text(prefix + "-empty-copy", copy || "Waiting for the selected camera…");
+          el(prefix + "-empty").className = "camera-empty" + (error ? " error" : "");
+          el(prefix + "-empty").hidden = false;
+          if (error || !cameraObjectUrl) el(prefix + "-frame").hidden = true;
+        });
+      }
+
+      function showCurrentCameraFrame() {
+        if (!cameraObjectUrl) {
+          setCameraEmpty("Opening camera", "Waiting for the first frame…", false);
+          return;
+        }
+        var prefix = activeRoute === "dashboard" ? "dashboard-camera" : "camera";
+        el(prefix + "-frame").src = cameraObjectUrl;
+        el(prefix + "-frame").hidden = false;
+        el(prefix + "-empty").hidden = true;
+      }
+
+      function releaseCameraObjectUrl() {
+        if (!cameraObjectUrl) return;
+        var api = cameraUrlApi();
+        if (api && typeof api.revokeObjectURL === "function") api.revokeObjectURL(cameraObjectUrl);
+        cameraObjectUrl = "";
+      }
+
+      function setCameraSelectOptions(select, sources, selected) {
+        var current = selected === null || selected === undefined ? "" : String(selected);
+        clear(select);
+        var automatic = document.createElement("option");
+        automatic.value = "";
+        automatic.textContent = "Automatic USB selection";
+        select.appendChild(automatic);
+        var network = document.createElement("option");
+        network.value = "mjpeg";
+        network.textContent = "IP camera (MJPEG)";
+        select.appendChild(network);
+        var rtsp = document.createElement("option");
+        rtsp.value = "rtsp";
+        rtsp.textContent = "IP camera (RTSP)";
+        select.appendChild(rtsp);
+        sources.forEach(function (source) {
+          var option = document.createElement("option");
+          option.value = String(source.id || source.stableId || "");
+          option.textContent = String(source.name || source.displayName || option.value || "USB camera");
+          select.appendChild(option);
+        });
+        setSelectValue(select, current);
+      }
+
+      function isNetworkCameraSource(source) { return source === "mjpeg" || source === "rtsp"; }
+
+      function cameraHasSavedUrl(source) {
+        var configuration = cameraSettingsData(cameraSnapshot);
+        return isNetworkCameraSource(source)
+          && (configuration[source + "UrlConfigured"] === true
+            || (String(configuration.sourceId || "") === source
+              && configuration.streamUrlConfigured === true));
+      }
+
+      function cameraHasUsableUrl(source, prefix) {
+        return !!String(el((prefix || "") + "camera-url").value || "").trim() || cameraHasSavedUrl(source);
+      }
+
+      function setCameraSourceControls(source) {
+        var network = isNetworkCameraSource(source);
+        el("camera-url-row").hidden = !network;
+        el("setting-camera-url-row").hidden = !network;
+        el("camera-resolution-row").hidden = source === "mjpeg";
+        el("setting-camera-resolution-row").hidden = source === "mjpeg";
+        el("camera-fps-row").hidden = false;
+        el("setting-camera-fps-row").hidden = false;
+        el("camera-rescan").hidden = network;
+        var rtspResolutionHelp = "Output JPEG resolution, up to 1920 × 1080; this does not change the camera's source stream. Choose camera-side quality for real detail: enlarging a low-resolution source only upscales it. Artisan's H.264 decoder accepts source video up to 1920 × 1088 (use a 1920 × 1080 or lower camera stream). A higher-resolution source will not open even with a lower output setting. Use a low frame rate for high-resolution timelapses.";
+        var usbResolutionHelp = "Lower settings use less USB bandwidth and processor time.";
+        text("camera-resolution-label", source === "rtsp" ? "Output resolution" : "Capture resolution");
+        text("setting-camera-resolution-label", source === "rtsp" ? "RTSP output resolution" : "Resolution");
+        text("camera-resolution-help", source === "rtsp" ? rtspResolutionHelp : usbResolutionHelp);
+        text("setting-camera-resolution-help", source === "rtsp" ? rtspResolutionHelp : usbResolutionHelp);
+        if (network) {
+          var scheme = source === "rtsp" ? "RTSP" : "MJPEG";
+          var example = source === "rtsp" ? "rtsp://USERNAME:PASSWORD@IP_ADDRESS:554/stream_path" : "http://camera.local/stream";
+          var placeholder = cameraHasSavedUrl(source) ? "Saved " + scheme + " URL — leave blank to keep" : example;
+          text("camera-url-label", scheme + " stream URL");
+          text("setting-camera-url-label", scheme + " stream URL");
+          var urlHelp = source === "rtsp"
+            ? "Enter the full address, including credentials if required: " + example + ". A blank field keeps the saved URL; credentials are not displayed after saving."
+            : "Use the camera's full HTTP or HTTPS stream address. A blank field keeps the saved URL; credentials are not displayed after saving.";
+          text("camera-url-help", urlHelp);
+          text("setting-camera-url-help", urlHelp);
+          el("camera-url").placeholder = placeholder;
+          el("setting-camera-url").placeholder = placeholder;
+        }
+      }
+
+      function cameraStateData(data) {
+        return data && data.status && typeof data.status === "object" ? data.status : data || {};
+      }
+
+      function cameraSettingsData(data) {
+        return data && data.settings && typeof data.settings === "object" ? data.settings : {};
+      }
+
+      function cameraFrameAge(timestamp) {
+        var value = Number(timestamp);
+        if (!finite(value) || value <= 0) return "—";
+        var age = Math.max(0, Date.now() - value);
+        if (age < 1500) return "now";
+        if (age < 60000) return Math.round(age / 1000) + "s ago";
+        return Math.round(age / 60000) + "m ago";
+      }
+
+      function renderCameraStatus(data) {
+        cameraSnapshot = data && typeof data === "object" ? data : {};
+        cameraSources = Array.isArray(cameraSnapshot.sources) ? cameraSnapshot.sources : [];
+        var status = cameraStateData(cameraSnapshot);
+        var configuration = cameraSettingsData(cameraSnapshot);
+        var enabled = configuration.enabled !== false && status.enabled !== false;
+        var hasConfiguredSource = Object.prototype.hasOwnProperty.call(configuration, "sourceId");
+        var configuredSource = hasConfiguredSource
+          ? String(configuration.sourceId || "")
+          : String(status.selectedSourceId || "");
+        var selectedSource = cameraDraftSource === null ? configuredSource : cameraDraftSource;
+        var network = isNetworkCameraSource(selectedSource);
+        var width = Number(configuration.width || status.requestedWidth || 1280);
+        var height = Number(configuration.height || status.requestedHeight || 720);
+        var fps = clamp(Math.round(Number(configuration.fps || status.requestedFps || 5)), 1, 10);
+        var resolution = cameraDraftResolution === null
+          ? cameraResolutionValue(width, height) : cameraDraftResolution;
+
+        setCameraSelectOptions(el("camera-source"), cameraSources, selectedSource);
+        setCameraSelectOptions(el("setting-camera-source"), cameraSources, selectedSource);
+        setCameraSourceControls(selectedSource);
+        // Never put a saved URL (which can include credentials) back into the DOM.
+        if (!cameraUrlDirty) {
+          el("camera-url").value = "";
+          el("setting-camera-url").value = "";
+        }
+        el("camera-enabled").checked = enabled;
+        el("setting-camera-enabled").checked = enabled;
+        setSelectValue(el("camera-resolution"), resolution);
+        setSelectValue(el("setting-camera-resolution"), resolution);
+        el("camera-fps").value = String(fps);
+        el("setting-camera-fps").value = String(fps);
+        text("camera-fps-value", fps + " FPS");
+        text("setting-camera-fps-value", fps + " FPS");
+
+        var nativeAvailable = network || (status.nativeAvailable !== false && cameraSnapshot.nativeAvailable !== false);
+        var sourceChangePending = cameraDraftSource !== null && cameraDraftSource !== configuredSource;
+        var running = !sourceChangePending && !!status.running;
+        var active = !sourceChangePending && (!!status.active || running);
+        var error = sourceChangePending ? "" : String(status.error || cameraSnapshot.error || "");
+        var message = String(status.message || "");
+        var activeName = network ? (selectedSource === "rtsp" ? "RTSP camera" : "MJPEG camera") : String(status.activeSourceName || "");
+        if (!network && !activeName && selectedSource) {
+          cameraSources.some(function (source) {
+            if (String(source.id || source.stableId || "") !== selectedSource) return false;
+            activeName = String(source.name || source.displayName || "USB camera");
+            return true;
+          });
+        }
+        if (!network && !activeName && cameraSources.length === 1) activeName = String(cameraSources[0].name || cameraSources[0].displayName || "USB camera");
+
+        text("camera-toolbar-source", activeName || (cameraSources.length ? "Automatic USB selection" : "No UVC camera detected"));
+        text("camera-info-name", activeName || "—");
+        text("camera-info-format", network ? (status.format || (selectedSource === "rtsp" ? "RTSP" : "MJPEG")) : status.format || "—");
+        var actualWidth = Number(status.actualWidth);
+        var actualHeight = Number(status.actualHeight);
+        text("camera-info-resolution", !sourceChangePending && finite(actualWidth) && actualWidth > 0 && finite(actualHeight) && actualHeight > 0 ? actualWidth + " × " + actualHeight : "—");
+        var actualFps = Number(status.actualFps);
+        text("camera-info-fps", !sourceChangePending && finite(actualFps) && actualFps > 0 ? actualFps + " FPS" : network || sourceChangePending ? "—" : fps + " FPS requested");
+        if (sourceChangePending) cameraLastFrameAt = 0;
+        else cameraLastFrameAt = Math.max(cameraLastFrameAt, Number(status.lastFrameAt) || 0);
+        text("camera-info-last-frame", cameraFrameAge(cameraLastFrameAt));
+        text("camera-frame-age", cameraFrameAge(cameraLastFrameAt));
+
+        var stateLabel = "Idle";
+        var stateKind = "";
+        var controlMessage = message || "Camera ready.";
+        if (network && !cameraHasUsableUrl(selectedSource, "")) {
+          stateLabel = "Setup";
+          stateKind = "paused";
+          controlMessage = "Enter the IP camera's " + (selectedSource === "rtsp" ? "RTSP" : "MJPEG") + " stream URL.";
+          setCameraEmpty("IP camera URL needed", controlMessage, false);
+        } else if (!nativeAvailable) {
+          stateLabel = "Unavailable";
+          stateKind = "error";
+          controlMessage = error || message || "USB camera capture is not available in this build.";
+          setCameraEmpty("Camera support unavailable", controlMessage, true);
+        } else if (!enabled) {
+          stateLabel = "Disabled";
+          stateKind = "paused";
+          controlMessage = "Camera capture is disabled.";
+          setCameraEmpty("Camera disabled", "Enable it here or in Settings to begin capture.", false);
+        } else if (!network && !cameraSources.length) {
+          stateLabel = "Not found";
+          stateKind = "paused";
+          controlMessage = error || message || "Connect a UVC camera, then rescan.";
+          setCameraEmpty("No UVC camera found", "Connect a USB video camera, then select Rescan cameras.", !!error);
+        } else if (error) {
+          stateLabel = "Attention";
+          stateKind = "error";
+          controlMessage = error;
+          if (!cameraObjectUrl) setCameraEmpty("Unable to open camera", error, true);
+        } else if (running) {
+          stateLabel = "Live";
+          stateKind = "active";
+          controlMessage = message || "Streaming from " + (activeName || "the selected camera") + ".";
+        } else if (active) {
+          stateLabel = "Starting";
+          stateKind = "paused";
+          controlMessage = message || "Waiting for the first camera frame…";
+        } else {
+          stateLabel = "Ready";
+          controlMessage = sourceChangePending ? "Applying camera source…" : message || "The camera starts when this page is open.";
+        }
+        setPill(el("camera-state"), stateLabel, stateKind);
+        text("camera-control-status", controlMessage);
+        el("camera-control-status").className = "camera-status" + (error ? " error" : "");
+        text("setting-camera-status", controlMessage);
+        el("setting-camera-status").className = "camera-setting-note" + (error ? " error" : "");
+      }
+
+      function loadCameraStatus(showFailure) {
+        return dashboardRequest("/api/dashboard/camera/status", { method: "GET" }).then(function (data) {
+          renderCameraStatus(data);
+          return data;
+        }).catch(function (error) {
+          var message = error.message || "Unable to read camera status.";
+          text("camera-control-status", message);
+          el("camera-control-status").className = "camera-status error";
+          text("setting-camera-status", message);
+          el("setting-camera-status").className = "camera-setting-note error";
+          if (!cameraObjectUrl) setCameraEmpty("Camera status unavailable", message, true);
+          setPill(el("camera-state"), "Offline", "error");
+          if (showFailure) toast(message, true);
+          throw error;
+        });
+      }
+
+      function cameraControlConfiguration(prefix) {
+        var enabledControl = el(prefix + "camera-enabled");
+        var sourceControl = el(prefix + "camera-source");
+        var urlControl = el(prefix + "camera-url");
+        var resolutionControl = el(prefix + "camera-resolution");
+        var fpsControl = el(prefix + "camera-fps");
+        var dimensions = String(resolutionControl.value || "1280x720").split("x");
+        return {
+          enabled: enabledControl.checked,
+          source: String(sourceControl.value || ""),
+          url: isNetworkCameraSource(String(sourceControl.value || ""))
+            ? String(urlControl.value || "").trim() : "",
+          width: Number(dimensions[0]) || 1280,
+          height: Number(dimensions[1]) || 720,
+          fps: clamp(Math.round(Number(fpsControl.value) || 5), 1, 10)
+        };
+      }
+
+      function applyCameraSettings(prefix) {
+        if (cameraSettingsRunning) {
+          cameraSettingsQueuedPrefix = prefix || "";
+          return;
+        }
+        var configuration = cameraControlConfiguration(prefix || "");
+        var network = isNetworkCameraSource(configuration.source);
+        var urlSchemeValid = configuration.source === "rtsp"
+          ? /^rtsp:\/\//i.test(configuration.url)
+          : /^https?:\/\//i.test(configuration.url);
+        if (network && configuration.url && !urlSchemeValid) {
+          var urlMessage = configuration.source === "rtsp"
+            ? "Enter a full RTSP URL (rtsp://…)."
+            : "Enter the full HTTP or HTTPS MJPEG stream URL.";
+          text("camera-control-status", urlMessage);
+          text("setting-camera-status", urlMessage);
+          el((prefix || "") + "camera-url").focus();
+          return;
+        }
+        if (network && !cameraHasUsableUrl(configuration.source, prefix)) {
+          var urlMessage = "Enter the IP camera's " + (configuration.source === "rtsp" ? "RTSP" : "MJPEG") + " stream URL.";
+          text("camera-control-status", urlMessage);
+          text("setting-camera-status", urlMessage);
+          el((prefix || "") + "camera-url").focus();
+          return;
+        }
+        cameraSettingsRunning = true;
+        text("camera-control-status", "Applying camera settings…");
+        text("setting-camera-status", "Applying camera settings…");
+        var formBody = "enabled=" + encodeURIComponent(configuration.enabled ? "true" : "false")
+          + "&source=" + encodeURIComponent(configuration.source)
+          + "&url=" + encodeURIComponent(configuration.url)
+          + "&width=" + encodeURIComponent(configuration.width)
+          + "&height=" + encodeURIComponent(configuration.height)
+          + "&fps=" + encodeURIComponent(configuration.fps);
+        dashboardRequest("/api/dashboard/camera/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: formBody
+        }).then(function (data) {
+          var hasPendingEdits = cameraSettingsQueuedPrefix !== null
+            || (cameraDraftSource !== null && cameraDraftSource !== configuration.source)
+            || (cameraUrlDirty && String(el("camera-url").value || "").trim() !== configuration.url);
+          if (!hasPendingEdits) {
+            cameraDraftSource = null;
+            cameraDraftResolution = null;
+            cameraUrlDirty = false;
+          }
+          renderCameraStatus(data);
+          toast(configuration.enabled ? "Camera settings applied." : "Camera disabled.", false);
+          if (cameraFeedVisible()) restartCameraFeed(false);
+        }).catch(function (error) {
+          var hasPendingEdits = cameraSettingsQueuedPrefix !== null
+            || (cameraDraftSource !== null && cameraDraftSource !== configuration.source)
+            || (cameraUrlDirty && String(el("camera-url").value || "").trim() !== configuration.url);
+          if (!hasPendingEdits) {
+            cameraDraftSource = null;
+            cameraDraftResolution = null;
+            cameraUrlDirty = false;
+          }
+          toast(error.message || "Unable to apply camera settings.", true);
+          loadCameraStatus(false).catch(function () {});
+        }).then(function () {
+          cameraSettingsRunning = false;
+          if (cameraSettingsQueuedPrefix !== null) {
+            var queuedPrefix = cameraSettingsQueuedPrefix;
+            cameraSettingsQueuedPrefix = null;
+            applyCameraSettings(queuedPrefix);
+          }
+        });
+      }
+
+      function publishCameraFrame(blob, sequence, timestamp) {
+        var api = cameraUrlApi();
+        if (!api || typeof api.createObjectURL !== "function") {
+          setCameraEmpty("Live view unsupported", "This browser cannot display camera frame blobs.", true);
+          return;
+        }
+        var nextUrl = api.createObjectURL(blob);
+        var previousUrl = cameraObjectUrl;
+        cameraObjectUrl = nextUrl;
+        cameraSequence = Math.max(cameraSequence, Number(sequence) || 0);
+        cameraLastFrameAt = Number(timestamp) || Date.now();
+        showCurrentCameraFrame();
+        setPill(el("camera-state"), "Live", "active");
+        text("camera-frame-age", "now");
+        text("camera-info-last-frame", "now");
+        if (previousUrl && typeof api.revokeObjectURL === "function") api.revokeObjectURL(previousUrl);
+      }
+
+      function scheduleCameraFrame(generation, delay) {
+        window.clearTimeout(cameraPollTimer);
+        if (generation !== cameraPollGeneration || !cameraFeedVisible()) return;
+        cameraPollTimer = window.setTimeout(function () { requestCameraFrame(generation); }, delay || 0);
+      }
+
+      function requestCameraFrame(generation) {
+        if (generation !== cameraPollGeneration || !cameraFeedVisible()) return;
+        if (cameraRequestRunning) {
+          scheduleCameraFrame(generation, 100);
+          return;
+        }
+        var configuration = cameraSettingsData(cameraSnapshot || {});
+        if (configuration.enabled === false) return;
+        cameraRequestRunning = true;
+        var requestClientId = cameraClientId;
+        var requestAbortController = typeof window.AbortController === "function"
+          ? new window.AbortController()
+          : null;
+        cameraFrameAbortController = requestAbortController;
+        var requestOptions = {
+          method: "GET",
+          cache: "no-store",
+          credentials: "same-origin",
+          headers: { "Accept": "image/jpeg", "X-Artisan-Dashboard": TOKEN }
+        };
+        if (requestAbortController) requestOptions.signal = requestAbortController.signal;
+        fetch("/api/dashboard/camera/frame?after=" + encodeURIComponent(cameraSequence)
+          + "&client=" + encodeURIComponent(requestClientId), requestOptions).then(function (response) {
+          if (generation !== cameraPollGeneration) return null;
+          if (response.status === 204) return { empty: true };
+          if (!response.ok) {
+            return response.text().then(function (payload) {
+              var message = "Camera frame returned " + response.status;
+              try { message = JSON.parse(payload || "{}").error || message; }
+              catch (error) { if (payload) message = payload; }
+              throw new Error(message);
+            });
+          }
+          var sequence = Number(response.headers.get("X-Artisan-Camera-Sequence"));
+          var timestamp = Number(response.headers.get("X-Artisan-Camera-Timestamp"));
+          return response.blob().then(function (blob) {
+            if (!blob || blob.size <= 0 || blob.size > 8 * 1024 * 1024) throw new Error("Camera returned an invalid frame.");
+            return { blob: blob, sequence: sequence, timestamp: timestamp };
+          });
+        }).then(function (frame) {
+          if (generation !== cameraPollGeneration || !frame) return;
+          if (!frame.empty) publishCameraFrame(frame.blob, frame.sequence, frame.timestamp);
+          scheduleCameraFrame(generation, frame.empty ? 80 : 0);
+        }).catch(function (error) {
+          if (generation !== cameraPollGeneration) return;
+          var message = error.message || "Camera frame unavailable.";
+          text("camera-control-status", message + " Retrying…");
+          el("camera-control-status").className = "camera-status error";
+          if (!cameraObjectUrl) setCameraEmpty("Waiting for camera", message + " Retrying automatically.", true);
+          setPill(el("camera-state"), "Retrying", "paused");
+          scheduleCameraFrame(generation, 900);
+        }).then(function () {
+          if (cameraFrameAbortController === requestAbortController) cameraFrameAbortController = null;
+          cameraRequestRunning = false;
+        });
+      }
+
+      function scheduleCameraStatus(generation) {
+        window.clearTimeout(cameraStatusTimer);
+        if (generation !== cameraPollGeneration || !cameraFeedVisible()) return;
+        cameraStatusTimer = window.setTimeout(function () {
+          loadCameraStatus(false).catch(function () {}).then(function () {
+            scheduleCameraStatus(generation);
+          });
+        }, 5000);
+      }
+
+      function startCameraFeed() {
+        if (cameraFeedActive || !cameraFeedVisible()) return;
+        cameraFeedActive = true;
+        cameraPollGeneration += 1;
+        var generation = cameraPollGeneration;
+        if (!cameraClientId) cameraClientId = createCameraClientId();
+        cameraSequence = 0;
+        if (!cameraObjectUrl) setCameraEmpty("Opening camera", "Waiting for the first frame…", false);
+        loadCameraStatus(false).catch(function () {}).then(function () {
+          if (generation !== cameraPollGeneration || !cameraFeedVisible()) return;
+          scheduleCameraFrame(generation, 0);
+          scheduleCameraStatus(generation);
+        });
+      }
+
+      function stopCameraFeed(notifyServer) {
+        cameraFeedActive = false;
+        cameraPollGeneration += 1;
+        window.clearTimeout(cameraPollTimer);
+        window.clearTimeout(cameraStatusTimer);
+        if (cameraFrameAbortController) {
+          cameraFrameAbortController.abort();
+          cameraFrameAbortController = null;
+        }
+        releaseCameraObjectUrl();
+        el("camera-frame").removeAttribute("src");
+        el("camera-frame").hidden = true;
+        el("dashboard-camera-frame").removeAttribute("src");
+        el("dashboard-camera-frame").hidden = true;
+        if (notifyServer && cameraClientId) {
+          var releasedClientId = cameraClientId;
+          cameraClientId = "";
+          dashboardRequest(
+            "/api/dashboard/camera/stop?client=" + encodeURIComponent(releasedClientId),
+            { method: "POST", keepalive: true }
+          ).catch(function () {});
+        }
+      }
+
+      function restartCameraFeed(notifyServer) {
+        stopCameraFeed(notifyServer);
+        if (cameraFeedVisible()) startCameraFeed();
+      }
+
+      function rescanCameras() {
+        el("camera-rescan").disabled = true;
+        text("camera-control-status", "Scanning USB video devices…");
+        dashboardRequest("/api/dashboard/camera/rescan", { method: "POST" }).then(function (data) {
+          renderCameraStatus(data);
+          toast(cameraSources.length ? cameraSources.length + " UVC camera" + (cameraSources.length === 1 ? "" : "s") + " found." : "No UVC cameras found.", !cameraSources.length);
+          restartCameraFeed(false);
+        }).catch(function (error) {
+          toast(error.message || "Unable to rescan USB cameras.", true);
+        }).then(function () {
+          el("camera-rescan").disabled = false;
         });
       }
 
@@ -2927,13 +3922,12 @@
         return { fans: fans, contracted: contracted, toolheadAvailable: toolhead.telemetryAvailable === true };
       }
 
-      function chartSampleTimestamp(data) {
+      function chartSampleTimestamp(data, requireValid) {
         var raw = data ? data.timestamp : null;
         var value = Number(raw);
         if (!finite(value) && typeof raw === "string") value = Date.parse(raw);
         if (finite(value) && value > 0 && value < 100000000000) value *= 1000;
-        if (!finite(value) || value <= 0) value = Date.now();
-        if (chartHistory.length && value <= chartHistory[chartHistory.length - 1].time) value = Math.max(Date.now(), chartHistory[chartHistory.length - 1].time + 1);
+        if (!finite(value) || value <= 0) return requireValid ? null : Date.now();
         return value;
       }
 
@@ -2944,10 +3938,13 @@
         var first = 0;
         while (first < chartHistory.length && chartHistory[first].time < cutoff) first += 1;
         if (first > 0) chartHistory.splice(0, first);
-        if (chartHistory.length > 1800) chartHistory.splice(0, chartHistory.length - 1800);
+        // The printer and visible browser can each sample every 1-2 seconds.
+        if (chartHistory.length > 3600) chartHistory.splice(0, chartHistory.length - 3600);
       }
 
-      function appendTelemetrySample(data) {
+      function appendTelemetrySample(data, fromHistory) {
+        var time = chartSampleTimestamp(data, !!fromHistory);
+        if (time === null) return;
         var toolhead = data && data.toolhead ? data.toolhead : {};
         var bed = data && data.bed ? data.bed : {};
         var left = nozzleBySide(toolhead, "left");
@@ -2975,8 +3972,38 @@
           values[definition.key] = fresh && finite(fan.speedPercent) ? clamp(fan.speedPercent, 0, 100) : null;
         });
 
-        chartHistory.push({ time: chartSampleTimestamp(data || {}), values: values });
+        var low = 0;
+        var high = chartHistory.length;
+        while (low < high) {
+          var middle = Math.floor((low + high) / 2);
+          if (chartHistory[middle].time < time) low = middle + 1;
+          else high = middle;
+        }
+        var sample = { time: time, values: values };
+        if (low < chartHistory.length && chartHistory[low].time === time) chartHistory[low] = sample;
+        else chartHistory.splice(low, 0, sample);
         trimChartHistory();
+      }
+
+      function loadTelemetryHistory() {
+        if (chartHistoryRequest) {
+          chartHistoryReloadPending = true;
+          return chartHistoryRequest;
+        }
+        chartHistoryRequest = dashboardRequest("/api/dashboard/telemetry/history", { method: "GET" }).then(function (data) {
+          if (!data || !Array.isArray(data.samples)) throw new Error("Temperature history is unavailable.");
+          data.samples.forEach(function (sample) { appendTelemetrySample(sample, true); });
+          drawTelemetryChart();
+        }).catch(function () {
+          // Continue showing live samples if the history service is unavailable.
+        }).then(function () {
+          chartHistoryRequest = null;
+          if (chartHistoryReloadPending) {
+            chartHistoryReloadPending = false;
+            loadTelemetryHistory();
+          }
+        });
+        return chartHistoryRequest;
       }
 
       function chartVisibleSamples() {
@@ -3323,7 +4350,7 @@
       /* Navigation and settings ---------------------------------------- */
       function routeFromHash() {
         var value = String(window.location.hash || "").replace(/^#\/?/, "").toLowerCase();
-        if (value === "files" || value === "console" || value === "bed-mesh" || value === "settings") return value;
+        if (value === "files" || value === "console" || value === "bed-mesh" || value === "camera" || value === "settings") return value;
         return "dashboard";
       }
 
@@ -3333,7 +4360,11 @@
       }
 
       function activateRoute() {
+        var previousCameraVisible = cameraFeedVisible();
+        var previousRoute = activeRoute;
         activeRoute = routeFromHash();
+        if (previousCameraVisible && !cameraFeedVisible()) stopCameraFeed(true);
+        if (previousRoute === "settings" && activeRoute !== "settings") window.clearTimeout(obicoPollTimer);
         if (activeRoute !== "files") suspendFileThumbnailObservation();
         if (activeRoute !== "bed-mesh") stopMeshDrag();
         if (activeRoute !== "files" && fileDetailOpen) closeFileDetail(false);
@@ -3344,6 +4375,7 @@
           files: "Files",
           console: "G-code Console",
           "bed-mesh": "Bed Mesh",
+          camera: "USB Camera",
           settings: "Settings"
         };
         var index;
@@ -3360,6 +4392,14 @@
         if (activeRoute === "bed-mesh") {
           loadBedMesh(false);
           window.setTimeout(drawBedMesh, 40);
+        }
+        if (cameraFeedVisible()) {
+          showCurrentCameraFrame();
+          startCameraFeed();
+        }
+        if (activeRoute === "settings") {
+          loadCameraStatus(false).catch(function () {});
+          loadObicoConfiguration(false).catch(function () {});
         }
         if (activeRoute === "dashboard") window.setTimeout(drawTelemetryChart, 40);
       }
@@ -3384,6 +4424,7 @@
         text("setting-mesh-scale-value", settings.meshScale + "×");
         el("setting-mesh-values").checked = settings.meshValues;
         el("setting-chart-visible").checked = settings.chartVisible;
+        syncDashboardCameraPreview();
         setSelectValue(el("setting-chart-window"), settings.chartWindowMinutes);
         renderChartFanSettings();
         Array.prototype.forEach.call(document.querySelectorAll("[data-chart-series]"), function (control) {
@@ -3394,6 +4435,7 @@
         renderConsole();
         setMeshView(settings.meshView, false);
         applyChartSettings();
+        updateObicoActionAvailability();
       }
 
       function scheduleStatusRefresh() {
@@ -5889,6 +6931,140 @@
       el("mesh-view-3d").addEventListener("click", function () { setMeshView("3d", true); });
       installMeshInteraction();
 
+      el("camera-rescan").addEventListener("click", rescanCameras);
+      el("camera-reconnect").addEventListener("click", function () { restartCameraFeed(true); });
+      ["camera-frame", "dashboard-camera-frame"].forEach(function (id) {
+        el(id).addEventListener("error", function () {
+          if (!cameraObjectUrl || this.src !== cameraObjectUrl) return;
+          releaseCameraObjectUrl();
+          this.hidden = true;
+          setCameraEmpty("Frame could not be displayed", "Reconnecting to the selected camera…", true);
+        });
+      });
+      el("camera-show-dashboard").addEventListener("change", function () {
+        settings.showCameraOnDashboard = this.checked;
+        syncDashboardCameraPreview();
+        saveSettings("Dashboard camera preference saved.");
+        if (cameraFeedVisible()) {
+          showCurrentCameraFrame();
+          startCameraFeed();
+        } else if (cameraFeedActive) stopCameraFeed(true);
+      });
+      ["camera-enabled"].forEach(function (id) {
+        el(id).addEventListener("change", function () { applyCameraSettings(""); });
+      });
+      ["setting-camera-enabled"].forEach(function (id) {
+        el(id).addEventListener("change", function () { applyCameraSettings("setting-"); });
+      });
+      ["camera-resolution", "setting-camera-resolution"].forEach(function (id) {
+        el(id).addEventListener("change", function () {
+          var prefix = id === "setting-camera-resolution" ? "setting-" : "";
+          cameraDraftResolution = String(this.value || "");
+          el(prefix ? "camera-resolution" : "setting-camera-resolution").value = cameraDraftResolution;
+          applyCameraSettings(prefix);
+        });
+      });
+      ["camera-source", "setting-camera-source"].forEach(function (id) {
+        el(id).addEventListener("change", function () {
+          var source = String(this.value || "");
+          var prefix = id === "setting-camera-source" ? "setting-" : "";
+          cameraDraftSource = source;
+          cameraDraftResolution = source === "rtsp"
+            && String(cameraSettingsData(cameraSnapshot).sourceId || "") !== "rtsp"
+            ? "640x360" : null;
+          window.clearTimeout(cameraUrlApplyTimer);
+          // An unsaved URL typed for another source must never be submitted here.
+          el("camera-url").value = "";
+          el("setting-camera-url").value = "";
+          cameraUrlDirty = false;
+          el(prefix ? "camera-source" : "setting-camera-source").value = source;
+          if (cameraDraftResolution !== null) {
+            el("camera-resolution").value = cameraDraftResolution;
+            el("setting-camera-resolution").value = cameraDraftResolution;
+          }
+          setCameraSourceControls(source);
+          if (isNetworkCameraSource(source) && !cameraHasUsableUrl(source, prefix)) {
+            var message = "Enter the IP camera's " + (source === "rtsp" ? "RTSP" : "MJPEG") + " stream URL.";
+            text("camera-control-status", message);
+            text("setting-camera-status", message);
+            el(prefix + "camera-url").focus();
+            return;
+          }
+          applyCameraSettings(prefix);
+        });
+      });
+      ["camera-url", "setting-camera-url"].forEach(function (id) {
+        el(id).addEventListener("input", function () {
+          var other = id === "camera-url" ? "setting-camera-url" : "camera-url";
+          el(other).value = this.value;
+          cameraUrlDirty = true;
+        });
+        el(id).addEventListener("change", function () {
+          var prefix = id === "setting-camera-url" ? "setting-" : "";
+          window.clearTimeout(cameraUrlApplyTimer);
+          cameraUrlApplyTimer = window.setTimeout(function () {
+            if (isNetworkCameraSource(el(prefix + "camera-source").value)) applyCameraSettings(prefix);
+          }, 180);
+        });
+      });
+      el("camera-fps").addEventListener("input", function () {
+        text("camera-fps-value", this.value + " FPS");
+        el("setting-camera-fps").value = this.value;
+        text("setting-camera-fps-value", this.value + " FPS");
+      });
+      el("camera-fps").addEventListener("change", function () { applyCameraSettings(""); });
+      el("setting-camera-fps").addEventListener("input", function () {
+        text("setting-camera-fps-value", this.value + " FPS");
+        el("camera-fps").value = this.value;
+        text("camera-fps-value", this.value + " FPS");
+      });
+      el("setting-camera-fps").addEventListener("change", function () { applyCameraSettings("setting-"); });
+
+      ["setting-obico-enabled", "setting-obico-server",
+        "setting-obico-remote-control", "setting-obico-camera"].forEach(function (id) {
+        el(id).addEventListener(id === "setting-obico-server" ? "input" : "change", function () {
+          obicoDirty = true;
+          updateObicoActionAvailability();
+          text("setting-obico-status", "Obico settings have unsaved changes.");
+          el("setting-obico-status").className = "status-copy obico-status-copy";
+        });
+      });
+      el("setting-obico-code").addEventListener("input", function () {
+        var filtered = String(this.value || "").replace(/\D/g, "").slice(0, 6);
+        if (this.value !== filtered) this.value = filtered;
+        updateObicoActionAvailability();
+      });
+      el("setting-obico-save").addEventListener("click", function () {
+        saveObicoConfiguration(true).catch(function () {});
+      });
+      el("setting-obico-link").addEventListener("click", function () {
+        var code = String(el("setting-obico-code").value || "");
+        if (!/^\d{6}$/.test(code)) {
+          toast("Enter the complete six-digit Obico verification code.", true);
+          return;
+        }
+        beginObicoLink(code);
+      });
+      el("setting-obico-test").addEventListener("click", function () {
+        saveObicoConfiguration(false).then(function () {
+          return runObicoAction(
+            "/api/dashboard/obico/test",
+            "Testing the Obico connection…",
+            "Obico connection test started."
+          );
+        }).catch(function () {});
+      });
+      el("setting-obico-unlink").addEventListener("click", function () {
+        if (!window.confirm("Unlink this Artisan from Obico? The encrypted printer credential will be removed.")) return;
+        runObicoAction(
+          "/api/dashboard/obico/disconnect",
+          "Removing the Obico link…",
+          "Artisan unlinked from Obico."
+        ).then(function () {
+          el("setting-obico-code").value = "";
+        }).catch(function () {});
+      });
+
       var settingIds = [
         "setting-theme", "setting-font-size", "setting-refresh", "setting-file-sort",
         "setting-console-autoscroll", "setting-console-suppress-routine",
@@ -5937,14 +7113,26 @@
 
       document.addEventListener("visibilitychange", function () {
         if (!document.hidden) {
+          loadTelemetryHistory();
           refresh();
           if (activeRoute === "files") loadFiles(true);
           if (activeRoute === "console") scheduleConsolePoll(0);
           if (activeRoute === "bed-mesh") loadBedMesh(false);
+          if (cameraFeedVisible()) {
+            showCurrentCameraFrame();
+            startCameraFeed();
+          }
+          if (activeRoute === "settings") {
+            loadCameraStatus(false).catch(function () {});
+            loadObicoConfiguration(false).catch(function () {});
+          }
           if (fileDetailOpen) {
             window.clearTimeout(fileDetailTimer);
             loadFileDetail(fileDetailRequestVersion);
           }
+        } else {
+          if (cameraFeedActive) stopCameraFeed(true);
+          if (activeRoute === "settings") window.clearTimeout(obicoPollTimer);
         }
       });
       window.addEventListener("resize", function () {
@@ -5958,11 +7146,18 @@
       window.addEventListener("scroll", scheduleFallbackFileThumbnailScan, false);
       window.addEventListener("pagehide", function () {
         stopMeshDrag();
+        stopCameraFeed(true);
+        window.clearTimeout(obicoPollTimer);
         suspendFileThumbnailObservation();
         releaseAllFileThumbnails();
       });
-      window.addEventListener("pageshow", function () {
+      window.addEventListener("pageshow", function (event) {
+        if (event.persisted && !document.hidden) loadTelemetryHistory();
         if (activeRoute === "files" && filesSnapshot) renderFiles();
+        if (cameraFeedVisible()) {
+          showCurrentCameraFrame();
+          startCameraFeed();
+        }
       });
       if (systemThemeMedia) {
         var onSystemThemeChanged = function () {
@@ -5975,6 +7170,7 @@
       syncSettingsControls();
       if (!window.location.hash) window.location.hash = "/dashboard";
       activateRoute();
+      loadTelemetryHistory();
       refresh();
       scheduleStatusRefresh();
     }());

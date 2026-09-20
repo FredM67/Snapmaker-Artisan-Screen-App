@@ -73,6 +73,7 @@ public class A400LevelingBedCalibrationBedHeatingFragment extends A400Calibratio
                     .setDialogStatus(DecisionDialog.BTN_TWO, true, false, true, true)
                     .setPic(R.drawable.pic_a400_warning_112x112)
                     .setFirstTv(getString(R.string.a400_calibration_heated_bed_preheat_wait_to_cool), R.color.select_dialog_white_txt, (dialog, which) -> {
+                        mViewModel.declinePreheatTemperature();
                         dialog.dismiss();
                         startCalibration();
                     })

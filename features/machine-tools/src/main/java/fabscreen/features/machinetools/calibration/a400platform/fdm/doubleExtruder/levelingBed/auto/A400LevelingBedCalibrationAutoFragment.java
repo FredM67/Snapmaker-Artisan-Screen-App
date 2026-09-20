@@ -45,6 +45,8 @@ public class A400LevelingBedCalibrationAutoFragment extends A400CalibrationBaseF
     private int mLastPoint = 0;
     private IPreferences.Helper mPrefHelper;
     private boolean isFinish;
+    /** Whether exitCalibration already succeeded, so a retry only redoes the bed restore. */
+    private boolean mCalibrationExited;
 
     public static Fragment newInstance() {
         return new A400LevelingBedCalibrationAutoFragment();
@@ -112,16 +114,53 @@ public class A400LevelingBedCalibrationAutoFragment extends A400CalibrationBaseF
     private void saveCalibration() {
         if (isFinish) return;
         isFinish = true;
-        ServiceContainer.getInstance().getService(IMachine.class).getFDMController()
+        // A retry after a failed bed restore must not send exitCalibration again: the calibration
+        // has already been left, and a second exit would answer with an error of its own.
+        Observable<ResponseStructure> exit = mCalibrationExited
+                ? Observable.just(new ResponseStructure())
+                : ServiceContainer.getInstance().getService(IMachine.class).getFDMController()
                 .exitCalibration(true)
+                .doOnNext(responseStructure -> mCalibrationExited = responseStructure.isSuccess());
+        exit
                 .flatMap(responseStructure -> responseStructure.isSuccess() ? applyBedStateOnExit() : Observable.just(responseStructure))
+                .observeOn(AndroidSchedulers.mainThread())
                 .as(bindToLifecycle())
                 .subscribe(response -> {
                     isFinish = false;
                     if (response.isSuccess()) {
                         finishActivityWithResultOk();
+                    } else {
+                        Logger.e("Exit Calibration: " + response);
+                        showRestoreFailedDialog();
                     }
+                }, throwable -> {
+                    isFinish = false;
+                    LogHelper.log(throwable);
+                    showRestoreFailedDialog();
                 });
+    }
+
+    /**
+     * The calibration itself is done, but the heated bed was not handed back to the state it was in
+     * before. Leaving silently would strand the bed on the calibration target, so the operator is
+     * told and can retry; the snapshot is kept until a restore succeeds, so the retry is meaningful.
+     */
+    private void showRestoreFailedDialog() {
+        DecisionDialog.create(getContext())
+                .setTitle(R.string.a400_calibration_heated_bed_restore_failed_title)
+                .setContent(getString(R.string.a400_calibration_heated_bed_restore_failed_content))
+                .setType(DecisionDialog.WARMING_TYPE)
+                .setDialogStatus(DecisionDialog.BTN_TWO, true, false, true, true)
+                .setPic(R.drawable.pic_a400_warning_112x112)
+                .setFirstTv(getString(R.string.all_close), R.color.select_dialog_white_txt, (dialog, which) -> {
+                    dialog.dismiss();
+                    finishActivityWithResultOk();
+                })
+                .setSecondTv(getString(R.string.all_retry), R.color.select_dialog_yellow_txt, (dialog, which) -> {
+                    dialog.dismiss();
+                    saveCalibration();
+                })
+                .show();
     }
 
     @Override

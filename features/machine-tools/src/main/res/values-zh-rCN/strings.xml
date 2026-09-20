@@ -32,6 +32,12 @@
     <string name="j1_calibration_z_success_content">将之前拧松的螺丝再次锁紧；若后续不进行其他校准，请将 PEI 玻璃平台装回热床之上。</string>
     <string name="j1_calibration_success_title">校准成功</string>
 
+    <string name="a400_calibration_heated_bed_preheat_title">热床已在预热</string>
+    <string name="a400_calibration_heated_bed_preheat_content">热床正在预热至高于本次校准所设定的温度。是使用当前的预热温度，还是等待热床冷却至设定温度？</string>
+    <string name="a400_calibration_heated_bed_preheat_use_current">使用当前温度</string>
+    <string name="a400_calibration_heated_bed_preheat_wait_to_cool">等待冷却</string>
+    <string name="a400_calibration_heated_bed_restore_failed_title">热床未恢复</string>
+    <string name="a400_calibration_heated_bed_restore_failed_content">校准已完成，但热床未能恢复到校准前的状态。请重试，或关闭此界面并自行检查热床温度。</string>
     <string name="a400_calibration_heated_bed_leveling_content_1">加热热床和喷嘴（1/2）</string>
     <string name="a400_calibration_heated_bed_leveling_content_2">校准调平点（2/2）</string>
     <string name="a400_calibration_heated_bed_leveling_content_3">校准调平点（3/3）</string>

@@ -33,6 +33,12 @@
     <string name="a400_calibration_heated_bed_leveling_auto_content">Der Werkzeugkopf untersucht und erhält automatisch Daten für bestimmte Punkte auf dem beheizten Bett, um die Bewegung der beiden Düsen während des Drucks entsprechend anzupassen.</string>
     <string name="a400_calibration_heated_bed_leveling_manual_content">Steuern Sie den Werkzeugkopf manuell, um Daten für bestimmte Punkte auf dem beheizten Bett zu untersuchen und zu erhalten. Die Bewegung der beiden Düsen wird während des Drucks entsprechend eingestellt.</string>
 
+    <string name="a400_calibration_heated_bed_preheat_title">Bett wird bereits vorgeheizt</string>
+    <string name="a400_calibration_heated_bed_preheat_content">Das beheizte Bett wird bereits auf eine höhere Temperatur vorgeheizt als die für diese Kalibrierung eingestellte. Möchten Sie die aktuelle Vorheiztemperatur verwenden oder warten, bis das Bett auf die eingestellte Temperatur abgekühlt ist?</string>
+    <string name="a400_calibration_heated_bed_preheat_use_current">Aktuelle verwenden</string>
+    <string name="a400_calibration_heated_bed_preheat_wait_to_cool">Abkühlen abwarten</string>
+    <string name="a400_calibration_heated_bed_restore_failed_title">Bett nicht wiederhergestellt</string>
+    <string name="a400_calibration_heated_bed_restore_failed_content">Die Kalibrierung ist abgeschlossen, das beheizte Bett konnte jedoch nicht in seinen vorherigen Zustand zurückversetzt werden. Versuchen Sie es erneut, oder schließen Sie diesen Bildschirm und prüfen Sie die Betttemperatur selbst.</string>
     <string name="a400_calibration_heated_bed_leveling_content_1">Heizen von Bett und Düse (1/2)</string>
     <string name="a400_calibration_heated_bed_leveling_content_2">Kalibrierungspunkte kalibrieren (2/2)</string>
     <string name="a400_calibration_heated_bed_leveling_content_3">Kalibrierungspunkte kalibrieren (3/3)</string>

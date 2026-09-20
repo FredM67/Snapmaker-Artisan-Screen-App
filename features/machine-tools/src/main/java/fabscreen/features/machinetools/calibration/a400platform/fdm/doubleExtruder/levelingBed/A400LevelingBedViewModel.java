@@ -58,6 +58,8 @@ public class A400LevelingBedViewModel extends BaseViewModel {
     private final ArrayList<int[]> mBedSnapshotZoneTargets = new ArrayList<>();
     private int mBedSnapshotWorkMode = HeatedBed.HeatedBedStatus.HEATED_BED_STATUS_WORK_MODE_WHOLE;
     private boolean mHasBedSnapshot = false;
+    /** The pre-heat question is asked once per run; a recreated view must not ask it again. */
+    private boolean mPreheatChoiceMade = false;
 
     public A400LevelingBedViewModel() {
         super();
@@ -246,41 +248,28 @@ public class A400LevelingBedViewModel extends BaseViewModel {
     }
 
     /**
-     * The temperature auto bed leveling is going to use: the configured one, raised to a pre-heat
-     * the user already has running. Without this, a bed pre-heated to 80 °C gets its target pulled
-     * back down to the configured value and slowly drifts towards it for the whole run, so the
-     * points are not all probed at the same temperature.
+     * The temperature auto bed leveling would use if the pre-heat already running were adopted: the
+     * configured one, raised to that pre-heat. Without adopting it, a bed pre-heated to 80 °C gets
+     * its target pulled back down to the configured value and slowly drifts towards it for the
+     * whole run, so the points are not all probed at the same temperature.
      * <p>
      * A pre-heat lower than the configured temperature changes nothing, and an explicit
      * "no heating" (0 °C) configuration is left alone.
      */
-    public static int effectiveBedCalibrationTemperature(int configuredTemperature) {
-        MachineController machineController = ServiceContainer.getInstance().getService(IMachine.class).getMachineController();
-        HeatedBed heatedBed = (machineController != null) ? machineController.getHeatedBed() : null;
-        if (heatedBed == null) return configuredTemperature;
-        HeatedBed.HeatedBedStatus status = heatedBed.getHeatedBedStatusSubjectHolder().getValue();
-        if (status == null || status.getZoneList() == null) return configuredTemperature;
-
-        int preheat = 0;
-        for (HeatedBed.ZoneInfo zone : status.getZoneList()) {
-            preheat = Math.max(preheat, zone.getTargetTemperature());
-        }
-        return effectiveBedCalibrationTemperature(configuredTemperature, preheat);
-    }
-
     private static int effectiveBedCalibrationTemperature(int configuredTemperature, int preheatTemperature) {
         if (configuredTemperature <= 0) return configuredTemperature;
         return Math.max(configuredTemperature, Math.min(preheatTemperature, MAX_BED_CALIBRATION_TEMPERATURE));
     }
 
     /**
-     * Applies {@link #effectiveBedCalibrationTemperature(int)} to this run, using the pre-heat from
-     * {@link #snapshotBedState()} rather than a second read, so it cannot pick up a target this
-     * calibration set itself. Call it right after the snapshot, before anything heats or shows an
-     * estimated duration.
+     * Raises this run's temperature to the pre-heat captured by {@link #snapshotBedState()}, after
+     * the operator has chosen to keep that pre-heat rather than wait for the bed to cool down. The
+     * pre-heat comes from the snapshot rather than a second read, so it cannot pick up a target
+     * this calibration set itself. Call it before anything heats or shows an estimated duration.
      */
     public void adoptPreheatTemperature() {
         if (!mHasBedSnapshot) return;
+        mPreheatChoiceMade = true;
 
         int adopted = effectiveBedCalibrationTemperature(mBedCalibrationBedTemperature, snapshotPreheatTemperature());
         if (adopted == mBedCalibrationBedTemperature) return;
@@ -291,13 +280,20 @@ public class A400LevelingBedViewModel extends BaseViewModel {
     }
 
     /**
-     * Whether {@link #adoptPreheatTemperature()} would actually raise the configured temperature.
-     * The caller uses this to decide whether the operator needs to be asked: adopting the running
-     * pre-heat means probing at a higher temperature than they configured, so it should be their
-     * choice rather than a silent override.
+     * Records that the operator chose to calibrate at the configured temperature and wait for the
+     * bed to cool down to it, so the choice is not asked again for this run.
+     */
+    public void declinePreheatTemperature() {
+        mPreheatChoiceMade = true;
+    }
+
+    /**
+     * Whether the operator still has to be asked about a running pre-heat, because adopting it
+     * would raise the configured temperature. Probing above the configured temperature is their
+     * call rather than a silent override, and it is only asked once per calibration run.
      */
     public boolean wouldAdoptPreheatTemperature() {
-        if (!mHasBedSnapshot) return false;
+        if (!mHasBedSnapshot || mPreheatChoiceMade) return false;
         return effectiveBedCalibrationTemperature(mBedCalibrationBedTemperature, snapshotPreheatTemperature()) != mBedCalibrationBedTemperature;
     }
 

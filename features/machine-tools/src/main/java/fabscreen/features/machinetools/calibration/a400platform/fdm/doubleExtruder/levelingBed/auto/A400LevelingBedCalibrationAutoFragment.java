@@ -191,8 +191,15 @@ public class A400LevelingBedCalibrationAutoFragment extends A400CalibrationBaseF
                 .setSecondTv(getContext().getResources().getString(R.string.all_stop), R.color.select_dialog_yellow_txt, ((dialog, which) -> {
                     fabBackConfirm.mCancelBtn.setEnabled(false);
                     fabBackConfirm.mSecondBtn.setEnabled(false);
-                    mViewModel.getInterruptAutoLevelingObservable()
+                    // As on the completion path, a second "Stop" after a failed bed restore must
+                    // only redo the restore: the leveling has already been interrupted and the
+                    // calibration already left, and repeating either would answer with an error.
+                    Observable<ResponseStructure> exit = mCalibrationExited
+                            ? Observable.just(new ResponseStructure())
+                            : mViewModel.getInterruptAutoLevelingObservable()
                             .flatMap(responseStructure -> ServiceContainer.getInstance().getService(IMachine.class).getFDMController().exitCalibration(false))
+                            .doOnNext(responseStructure -> mCalibrationExited = responseStructure.isSuccess());
+                    exit
                             .flatMap(responseStructure -> responseStructure.isSuccess() ? applyBedStateOnExit() : Observable.just(responseStructure))
                             .observeOn(AndroidSchedulers.mainThread())
                             .as(bindToLifecycle())
@@ -210,7 +217,13 @@ public class A400LevelingBedCalibrationAutoFragment extends A400CalibrationBaseF
                                 dialog.dismiss();
                                 requireActivity().setResult(Activity.RESULT_CANCELED);
                                 requireActivity().finish();
-                            }, LogHelper::log);
+                            }, throwable -> {
+                                // Without this the dialog would keep both buttons greyed out and
+                                // the operator could neither retry nor cancel out of it.
+                                fabBackConfirm.mCancelBtn.setEnabled(true);
+                                fabBackConfirm.mSecondBtn.setEnabled(true);
+                                LogHelper.log(throwable);
+                            });
                 }));
         fabBackConfirm.show();
     }

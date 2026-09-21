@@ -39,6 +39,11 @@
     <string name="a400_calibration_heated_bed_preheat_wait_to_cool">Abkühlen abwarten</string>
     <string name="a400_calibration_heated_bed_restore_failed_title">Bett nicht wiederhergestellt</string>
     <string name="a400_calibration_heated_bed_restore_failed_content">Die Kalibrierung ist abgeschlossen, das beheizte Bett konnte jedoch nicht in seinen vorherigen Zustand zurückversetzt werden. Versuchen Sie es erneut, oder schließen Sie diesen Bildschirm und prüfen Sie die Betttemperatur selbst.</string>
+    <string name="a400_calibration_heated_bed_restore_failed_stopped_content">Die Kalibrierung wurde abgebrochen, das beheizte Bett konnte jedoch nicht in seinen vorherigen Zustand zurückversetzt werden. Versuchen Sie es erneut, oder schließen Sie diesen Bildschirm und prüfen Sie die Betttemperatur selbst.</string>
+    <string name="a400_calibration_exit_failed_title">Kalibrierung nicht gespeichert</string>
+    <string name="a400_calibration_exit_failed_content">Die Maschine hat das Speichern und Beenden der Kalibrierung nicht bestätigt. Das Ergebnis wurde daher nicht gespeichert und das beheizte Bett befindet sich weiterhin auf der Kalibriertemperatur. Versuchen Sie es erneut, oder schließen Sie diesen Bildschirm und führen Sie die Kalibrierung noch einmal durch.</string>
+    <string name="a400_calibration_stop_failed_title">Kalibrierung nicht abgebrochen</string>
+    <string name="a400_calibration_stop_failed_content">Die Maschine hat den Abbruch der Kalibrierung nicht bestätigt; sie läuft möglicherweise noch. Versuchen Sie es erneut, oder brechen Sie ab und warten Sie, bis die Kalibrierung beendet ist.</string>
     <string name="a400_calibration_heated_bed_leveling_content_1">Heizen von Bett und Düse (1/2)</string>
     <string name="a400_calibration_heated_bed_leveling_content_2">Kalibrierungspunkte kalibrieren (2/2)</string>
     <string name="a400_calibration_heated_bed_leveling_content_3">Kalibrierungspunkte kalibrieren (3/3)</string>

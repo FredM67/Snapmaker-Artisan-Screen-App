@@ -38,6 +38,11 @@
     <string name="a400_calibration_heated_bed_preheat_wait_to_cool">等待冷却</string>
     <string name="a400_calibration_heated_bed_restore_failed_title">热床未恢复</string>
     <string name="a400_calibration_heated_bed_restore_failed_content">校准已完成，但热床未能恢复到校准前的状态。请重试，或关闭此界面并自行检查热床温度。</string>
+    <string name="a400_calibration_heated_bed_restore_failed_stopped_content">校准已停止，但热床未能恢复到校准前的状态。请重试，或关闭此界面并自行检查热床温度。</string>
+    <string name="a400_calibration_exit_failed_title">校准未保存</string>
+    <string name="a400_calibration_exit_failed_content">机器未确认保存并退出校准，因此结果尚未保存，热床仍处于校准温度。请重试，或关闭此界面并重新进行校准。</string>
+    <string name="a400_calibration_stop_failed_title">校准未停止</string>
+    <string name="a400_calibration_stop_failed_content">机器未确认停止校准，校准可能仍在进行。请重试，或取消并等待校准结束。</string>
     <string name="a400_calibration_heated_bed_leveling_content_1">加热热床和喷嘴（1/2）</string>
     <string name="a400_calibration_heated_bed_leveling_content_2">校准调平点（2/2）</string>
     <string name="a400_calibration_heated_bed_leveling_content_3">校准调平点（3/3）</string>

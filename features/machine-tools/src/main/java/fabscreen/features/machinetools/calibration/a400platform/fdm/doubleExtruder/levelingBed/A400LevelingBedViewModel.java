@@ -5,6 +5,7 @@ import android.annotation.SuppressLint;
 import com.orhanobut.logger.Logger;
 
 import java.util.ArrayList;
+import java.util.List;
 
 import fabscreen.platform.base.instantiation.ServiceContainer;
 import fabscreen.platform.base.service.IMachine;
@@ -95,7 +96,11 @@ public class A400LevelingBedViewModel extends BaseViewModel {
                         }
                     }
                 }, LogHelper::log);
-        Observable.zip(mToolheadStatusState, mBedStatusState, (toolState, bedState) -> toolState && bedState)
+        // combineLatest, not zip: zip pairs emissions by index, which only held together while both
+        // sources exclusively emitted true. Now that either side also reports "not ready any more",
+        // the two streams emit at different rates and zip would pair a stale bed reading with a
+        // fresh toolhead one.
+        Observable.combineLatest(mToolheadStatusState, mBedStatusState, (toolState, bedState) -> toolState && bedState)
                 .as(bindToLifecycle())
                 .subscribe(aBoolean -> mTodoNext.onNext(aBoolean), LogHelper::log);
         float currentTemperature = machineController.getHeatedBed().getHeatedBedStatusSubjectHolder().getValue().getZoneList().get(0).getCurrentTemperature();
@@ -423,9 +428,10 @@ public class A400LevelingBedViewModel extends BaseViewModel {
         return fdmController.getToolheadStatusSubjectHolder(0).getObservable()
                 .doOnNext(toolheadStatus -> {
                     float currentTemperature = toolheadStatus.getExtruderList().get(0).getTemperature();
-                    if (currentTemperature >= 150) {
-                        mToolheadStatusState.onNext(true);
-                    }
+                    // Published on every reading rather than latched on the first hit, so a nozzle
+                    // that drops back below the threshold withdraws its readiness again. The
+                    // consumer only acts on true and de-duplicates, so brief flapping is harmless.
+                    mToolheadStatusState.onNext(currentTemperature >= 150);
                 });
     }
 
@@ -436,13 +442,35 @@ public class A400LevelingBedViewModel extends BaseViewModel {
                     float currentTemperature = heatedBedStatus.getZoneList().get(0).getCurrentTemperature();
                     int time = (int) (Math.abs(targetTemperature - currentTemperature) * HEATING_SPEED) + mGrid * mGrid * LEVELING_POINT_TIME;
                     mHeatTimeSubject.onNext(time);
-                    // Tolerance-based rather than "current >= target" so a bed that must cool
-                    // down to a lower configured temperature (operator declined the pre-heat)
-                    // is also recognized as ready, not just one that is still heating up.
-                    if (mBedCalibrationBedTemperature != 0 && Math.abs(currentTemperature - mBedCalibrationBedTemperature) <= BED_TEMPERATURE_READY_TOLERANCE) {
-                        mBedStatusState.onNext(true);
-                    }
+                    mBedStatusState.onNext(isBedAtCalibrationTemperature(heatedBedStatus));
                 });
+    }
+
+    /**
+     * Whether the bed can be considered ready for probing.
+     *
+     * <p>Every zone must report the calibration temperature as <em>its own target</em> and must
+     * have reached it. Checking the reported target is what rules out a stale reading: monitoring
+     * starts before {@link #startHeating()} is sent, so without it a bed on its way from 20 to
+     * 80 degrees would be declared ready the moment it passed a previously configured 60.
+     *
+     * <p>The comparison is tolerance-based rather than {@code current >= target} so that a bed
+     * which has to cool down to a lower configured temperature (the operator declined the
+     * pre-heat) is recognized as ready too, not just one that is still heating up. Readiness is
+     * published on every reading, including {@code false}, so a bed that drifts back out of
+     * tolerance withdraws it again instead of staying latched.
+     */
+    private boolean isBedAtCalibrationTemperature(HeatedBed.HeatedBedStatus heatedBedStatus) {
+        if (mBedCalibrationBedTemperature == 0) return false;
+        List<HeatedBed.ZoneInfo> zoneList = heatedBedStatus.getZoneList();
+        if (zoneList == null || zoneList.isEmpty()) return false;
+        for (HeatedBed.ZoneInfo zone : zoneList) {
+            if (zone.getTargetTemperature() != mBedCalibrationBedTemperature) return false;
+            if (Math.abs(zone.getCurrentTemperature() - mBedCalibrationBedTemperature) > BED_TEMPERATURE_READY_TOLERANCE) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public Observable<ResponseStructure> getInterruptAutoLevelingObservable() {

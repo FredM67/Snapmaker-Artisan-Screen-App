@@ -39,6 +39,11 @@
     <string name="a400_calibration_heated_bed_preheat_wait_to_cool">Wait to Cool</string>
     <string name="a400_calibration_heated_bed_restore_failed_title">Heated Bed Not Restored</string>
     <string name="a400_calibration_heated_bed_restore_failed_content">The calibration is finished, but the heated bed could not be set back to the state it was in before. Retry, or close this screen and check the heated bed temperature yourself.</string>
+    <string name="a400_calibration_heated_bed_restore_failed_stopped_content">The calibration has been stopped, but the heated bed could not be set back to the state it was in before. Retry, or close this screen and check the heated bed temperature yourself.</string>
+    <string name="a400_calibration_exit_failed_title">Calibration Not Saved</string>
+    <string name="a400_calibration_exit_failed_content">The machine did not confirm saving and leaving the calibration, so the result has not been stored and the heated bed is still at the calibration temperature. Retry, or close this screen and run the calibration again.</string>
+    <string name="a400_calibration_stop_failed_title">Calibration Not Stopped</string>
+    <string name="a400_calibration_stop_failed_content">The machine did not confirm stopping the calibration, so it may still be running. Retry, or cancel and wait for the calibration to finish.</string>
     <string name="a400_calibration_heated_bed_leveling_content_1">Heat Heated Bed and Nozzle (1/2)</string>
     <string name="a400_calibration_heated_bed_leveling_content_2">Calibrate Calibration Points (2/2)</string>
     <string name="a400_calibration_heated_bed_leveling_content_3">Calibrate Calibration Points (3/3)</string>

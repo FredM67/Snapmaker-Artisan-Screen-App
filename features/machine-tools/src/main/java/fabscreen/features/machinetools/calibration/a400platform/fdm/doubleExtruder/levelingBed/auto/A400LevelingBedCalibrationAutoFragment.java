@@ -1,7 +1,6 @@
 package fabscreen.features.machinetools.calibration.a400platform.fdm.doubleExtruder.levelingBed.auto;
 
 import android.app.Activity;
-import android.content.DialogInterface;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.ImageView;
@@ -46,6 +45,13 @@ public class A400LevelingBedCalibrationAutoFragment extends A400CalibrationBaseF
     private int mLastPoint = 0;
     private IPreferences.Helper mPrefHelper;
     private boolean isFinish;
+    /**
+     * Whether the auto-leveling interrupt already succeeded. Tracked apart from
+     * {@link #mCalibrationExited} because the two stages fail independently: probing can stop and
+     * the exit still be refused, and a retry that re-sent the interrupt would be answered with an
+     * error by a calibration that is no longer running.
+     */
+    private boolean mLevelingInterrupted;
     /** Whether exitCalibration already succeeded, so a retry only redoes the bed restore. */
     private boolean mCalibrationExited;
 
@@ -232,41 +238,49 @@ public class A400LevelingBedCalibrationAutoFragment extends A400CalibrationBaseF
                 .setDialogStatus(DecisionDialog.BTN_TWO, true, false, true, true)
                 .setPic(R.drawable.pic_a400_warning_112x112)
                 .setFirstTv(getContext().getResources().getString(R.string.all_cancel), R.color.select_dialog_white_txt, ((dialog, which) -> dialog.dismiss()))
-                .setSecondTv(getContext().getResources().getString(R.string.all_stop), R.color.select_dialog_yellow_txt, ((dialog, which) -> {
-                    // Checked before greying the buttons out: if the last point completed just as
-                    // "Stop" was tapped, stopCalibration() declines and the buttons would otherwise
-                    // stay disabled for good.
-                    if (isFinish) return;
-                    fabBackConfirm.mCancelBtn.setEnabled(false);
-                    fabBackConfirm.mSecondBtn.setEnabled(false);
-                    stopCalibration(dialog);
-                }));
+                .setSecondTv(getContext().getResources().getString(R.string.all_stop), R.color.select_dialog_yellow_txt, ((dialog, which) -> retryStop(fabBackConfirm)));
         fabBackConfirm.show();
+    }
+
+    /**
+     * Starts or retries the stop sequence from a dialog, greying that dialog out for as long as the
+     * request is in flight so neither button can be tapped while commands are still executing.
+     *
+     * <p>The {@code isFinish} check comes first, before the buttons are disabled: if the last point
+     * completed just as "Stop" was tapped, {@link #stopCalibration} declines and the buttons would
+     * otherwise stay disabled for good. Re-enabling them is never needed on the other branch,
+     * because every outcome of the sequence dismisses the dialog.
+     */
+    private void retryStop(DecisionDialog dialog) {
+        if (isFinish) return;
+        dialog.mCancelBtn.setEnabled(false);
+        dialog.mSecondBtn.setEnabled(false);
+        stopCalibration(dialog);
     }
 
     /**
      * Leaves the calibration at the operator's request: interrupt the leveling, exit the
      * calibration and hand the heated bed back to the state it was in before.
      *
-     * <p>As on the completion path, a retry after a failed bed restore must only redo the restore:
-     * the leveling has already been interrupted and the calibration already left, and repeating
-     * either would answer with an error of its own.
+     * <p>Each stage records its own success, and a retry resumes at the first one that has not
+     * completed. Repeating a stage that already succeeded would not be harmless: the firmware
+     * answers an interrupt for a calibration that is no longer running, and an exit for one already
+     * left, with an error of its own — so a retry that restarted from the top could never succeed.
      *
      * @param dialog the dialog the request came from; dismissed once the outcome is known, so the
      *               operator is never left in front of a dialog with both buttons greyed out.
      */
-    private void stopCalibration(DialogInterface dialog) {
-        // The retry dialogs keep their buttons enabled while the request runs, so guard against a
-        // second tap firing the sequence twice. Shared with saveCalibration(): both mean "an exit
-        // sequence is already in flight".
+    private void stopCalibration(DecisionDialog dialog) {
+        // Guards against a second tap landing while the sequence runs. Shared with
+        // saveCalibration(): both mean "an exit sequence is already in flight".
         if (isFinish) return;
         isFinish = true;
-        Observable<ResponseStructure> exit = mCalibrationExited
+        Observable<ResponseStructure> interrupt = mLevelingInterrupted
                 ? Observable.just(new ResponseStructure())
                 : mViewModel.getInterruptAutoLevelingObservable()
-                .flatMap(responseStructure -> ServiceContainer.getInstance().getService(IMachine.class).getFDMController().exitCalibration(false))
-                .doOnNext(responseStructure -> mCalibrationExited = responseStructure.isSuccess());
-        exit
+                .doOnNext(responseStructure -> mLevelingInterrupted = responseStructure.isSuccess());
+        interrupt
+                .flatMap(responseStructure -> responseStructure.isSuccess() ? exitCalibrationOnStop() : Observable.just(responseStructure))
                 .flatMap(responseStructure -> responseStructure.isSuccess() ? applyBedStateOnExit() : Observable.just(responseStructure))
                 .observeOn(AndroidSchedulers.mainThread())
                 .as(bindToLifecycle())
@@ -286,11 +300,25 @@ public class A400LevelingBedCalibrationAutoFragment extends A400CalibrationBaseF
                 });
     }
 
-    /** Shows the dialog matching whichever half of the stop sequence failed. */
+    /** The exit stage of the stop sequence, skipped once the machine has confirmed it. */
+    private Observable<ResponseStructure> exitCalibrationOnStop() {
+        if (mCalibrationExited) return Observable.just(new ResponseStructure());
+        return ServiceContainer.getInstance().getService(IMachine.class).getFDMController()
+                .exitCalibration(false)
+                .doOnNext(responseStructure -> mCalibrationExited = responseStructure.isSuccess());
+    }
+
+    /**
+     * Shows the dialog matching whichever stage of the stop sequence failed. The two flags are only
+     * set once the machine has confirmed the stage, so the first one still false names the failure.
+     */
     private void reportStopFailure(@Nullable ResponseStructure response) {
-        if (!mCalibrationExited) {
-            if (response != null) Logger.e("Exit Calibration: " + response);
+        if (!mLevelingInterrupted) {
+            if (response != null) Logger.e("Interrupt Auto Leveling: " + response);
             showStopFailedDialog();
+        } else if (!mCalibrationExited) {
+            if (response != null) Logger.e("Exit Calibration: " + response);
+            showStopExitFailedDialog();
         } else {
             if (response != null) Logger.e("Restore Heated Bed: " + response);
             showStopRestoreFailedDialog();
@@ -298,39 +326,60 @@ public class A400LevelingBedCalibrationAutoFragment extends A400CalibrationBaseF
     }
 
     /**
-     * Interrupting or leaving the calibration was never confirmed, so it may still be running on
-     * the machine. Staying on the calibration screen is the honest outcome here, which is why
-     * "Cancel" simply closes the dialog rather than exiting.
+     * Interrupting the leveling was never confirmed, so probing may still be running on the
+     * machine. This is the one stop failure where the calibration screen behind the dialog is still
+     * live, which is why "Cancel" simply closes the dialog and goes back to it.
      */
     private void showStopFailedDialog() {
-        DecisionDialog.create(getContext())
+        DecisionDialog dialog = DecisionDialog.create(getContext())
                 .setTitle(R.string.a400_calibration_stop_failed_title)
                 .setContent(getString(R.string.a400_calibration_stop_failed_content))
                 .setType(DecisionDialog.WARMING_TYPE)
                 .setDialogStatus(DecisionDialog.BTN_TWO, true, false, true, true)
-                .setPic(R.drawable.pic_a400_warning_112x112)
-                .setFirstTv(getString(R.string.all_cancel), R.color.select_dialog_white_txt, (dialog, which) -> dialog.dismiss())
-                .setSecondTv(getString(R.string.all_retry), R.color.select_dialog_yellow_txt, (dialog, which) -> stopCalibration(dialog))
+                .setPic(R.drawable.pic_a400_warning_112x112);
+        dialog.setFirstTv(getString(R.string.all_cancel), R.color.select_dialog_white_txt, (d, which) -> dialog.dismiss())
+                .setSecondTv(getString(R.string.all_retry), R.color.select_dialog_yellow_txt, (d, which) -> retryStop(dialog))
+                .show();
+    }
+
+    /**
+     * Probing has stopped but the machine never confirmed leaving the calibration, so it is still
+     * in calibration mode with the bed at the calibration temperature. Unlike
+     * {@link #showStopFailedDialog()} the screen behind the dialog is dead — the leveling it shows
+     * is over — so "Close" leaves it rather than returning to it.
+     */
+    private void showStopExitFailedDialog() {
+        DecisionDialog dialog = DecisionDialog.create(getContext())
+                .setTitle(R.string.a400_calibration_stop_exit_failed_title)
+                .setContent(getString(R.string.a400_calibration_stop_exit_failed_content))
+                .setType(DecisionDialog.WARMING_TYPE)
+                .setDialogStatus(DecisionDialog.BTN_TWO, true, false, true, true)
+                .setPic(R.drawable.pic_a400_warning_112x112);
+        dialog.setFirstTv(getString(R.string.all_close), R.color.select_dialog_white_txt, (d, which) -> {
+                    dialog.dismiss();
+                    finishActivityWithResultCanceled();
+                })
+                .setSecondTv(getString(R.string.all_retry), R.color.select_dialog_yellow_txt, (d, which) -> retryStop(dialog))
                 .show();
     }
 
     /**
      * The calibration has been left, but the heated bed was not handed back to its previous state.
-     * Unlike {@link #showStopFailedDialog()} there is nothing left to return to — the calibration
-     * is over on the machine — so "Close" leaves the screen instead of returning to a dead one.
+     * As with {@link #showStopExitFailedDialog()} there is nothing left to return to, so "Close"
+     * leaves the screen instead of returning to a dead one.
      */
     private void showStopRestoreFailedDialog() {
-        DecisionDialog.create(getContext())
+        DecisionDialog dialog = DecisionDialog.create(getContext())
                 .setTitle(R.string.a400_calibration_heated_bed_restore_failed_title)
                 .setContent(getString(R.string.a400_calibration_heated_bed_restore_failed_stopped_content))
                 .setType(DecisionDialog.WARMING_TYPE)
                 .setDialogStatus(DecisionDialog.BTN_TWO, true, false, true, true)
-                .setPic(R.drawable.pic_a400_warning_112x112)
-                .setFirstTv(getString(R.string.all_close), R.color.select_dialog_white_txt, (dialog, which) -> {
+                .setPic(R.drawable.pic_a400_warning_112x112);
+        dialog.setFirstTv(getString(R.string.all_close), R.color.select_dialog_white_txt, (d, which) -> {
                     dialog.dismiss();
                     finishActivityWithResultCanceled();
                 })
-                .setSecondTv(getString(R.string.all_retry), R.color.select_dialog_yellow_txt, (dialog, which) -> stopCalibration(dialog))
+                .setSecondTv(getString(R.string.all_retry), R.color.select_dialog_yellow_txt, (d, which) -> retryStop(dialog))
                 .show();
     }
 }

@@ -53,7 +53,7 @@ public class EnclosureViewModel extends BaseViewModel {
 
     void setLedLevel(int value) {
         ServiceContainer.getInstance().getService(IMachine.class).getMachineController().getEnclosure()
-                .setEnclosureLedLevel(value)
+                .setEnclosureLedLevelByUser(value)
                 .doOnNext(success -> updateEnclosureStatus())
                 .as(bindToLifecycle())
                 .subscribe(ret -> {/**/}, LogHelper::log);

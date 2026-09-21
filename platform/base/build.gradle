@@ -12,6 +12,8 @@ android {
 dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
     implementation project(":ijkplayer_java")
+    implementation 'com.google.android.exoplayer:exoplayer-core:2.17.1'
+    implementation 'com.google.android.exoplayer:exoplayer-rtsp:2.17.1'
     implementation project(':platform:lib')
     implementation Libs.INSTANCE.appCompat
     implementation Libs.INSTANCE.junit
@@ -45,4 +47,5 @@ dependencies {
     annotationProcessor Libs.INSTANCE.ARouterAnnotation
     implementation Libs.INSTANCE.segmentedButton
     implementation Libs.INSTANCE.localization
+    testImplementation 'com.squareup.okhttp3:mockwebserver:3.12.0'
 }

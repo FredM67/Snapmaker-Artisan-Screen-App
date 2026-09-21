@@ -187,7 +187,8 @@ public class DashboardNativeFdmPolicyContractTest {
                 "handlers",
                 "OrcaRequestHandler.java"
         );
-        return new String(Files.readAllBytes(source), StandardCharsets.UTF_8);
+        return new String(Files.readAllBytes(source), StandardCharsets.UTF_8)
+                .replace("\r\n", "\n");
     }
 
     private String between(String source, String start, String end) {

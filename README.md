@@ -69,6 +69,33 @@ Essential third-party libraries:
 - **Android NDK** 22.1.7171670
 - **Gradle** 5.4.1+ (wrapper included)
 
+## Obico integration on Artisan
+
+FabScreen can connect directly to Obico without a Raspberry Pi or other companion computer. To link it:
+
+1. Open the web dashboard, go to **Settings > Obico**, and save the server settings.
+2. In Obico, choose **Link New Printer** (or **Link Printer** on the web), then **OctoPrint**. Continue past the plugin prompt (**Next** on the web or **Yes, plugin is installed** on mobile). This choice only selects Obico's six-digit-code setup route; you do not need to install OctoPrint.
+3. On Obico's printer-scanning page, choose **Manual Setup** (or **Switch to Manual Linking**), then continue until Obico shows a six-digit verification code. Do not use the nearby-printer **Link** button; its OctoPrint discovery flow does not work with FabScreen.
+4. Enter that six-digit code in FabScreen's **Settings > Obico** and press **Verify code**. FabScreen should then show **Connected**.
+
+For a self-hosted Obico server, use the same server address in Obico and FabScreen. Obico's [manual OctoPrint linking guide](https://www.obico.io/docs/user-guides/octoprint-plugin-setup-manual-link/) shows the six-digit-code screens.
+
+The integration provides printer status, job progress, two-second temperature telemetry, print events and notifications, optional USB or IP-camera snapshots for monitoring and AI detection, and separately opt-in remote controls. The allowlisted control surface includes pause/resume/cancel, XYZ jogging and homing, heater targets, extrusion, feed/flow/fan tuning, and secure Obico cloud G-code download and print start. Arbitrary G-code remains rejected.
+
+The Artisan build offers live camera viewing through a Janus-compatible MJPEG-over-WebRTC data channel, using the selected USB or IP camera. Reload an Obico printer page after updating FabScreen: an already-open Obico page keeps its original snapshot-only player. On Obico Free, press Play to start a live-view cycle; Obico limits this to up to 5 FPS for 30 seconds followed by a cooldown, during which its captured-image fallback warning may still appear. The local WebRTC peer does not need extra printer-side hardware.
+
+JPEG uploads remain separate from live viewing because Obico uses unboosted images for AI failure detection. FabScreen prioritizes these images when requested, normally about twelve seconds after Obico accepts the previous one, and otherwise sends one unboosted image per minute during an active print. Viewer-only fallback uploads stop while a WebRTC data channel is actually open; during a print they are paced to ten seconds, and a cloud HTTP 429 pauses uploads for 65 seconds before retrying at a reduced fallback cadence. Actual AI analysis and automatic pausing are controlled by Obico and are not guaranteed merely by a live feed.
+
+To use an IP camera, open the web dashboard's **Camera** page, select **IP camera (MJPEG)**, enter its LAN MJPEG URL (for example `http://192.168.1.24:81/stream?raw=1`), and enable the camera. Some cameras display an HTML viewer at `/stream` and put the actual MJPEG feed in an image URL on that page; FabScreen follows one same-origin image URL when it detects this. The camera is fetched by FabScreen and served through the existing authenticated dashboard endpoint; Obico camera uploads use the same selected source when separately enabled. HTTP and HTTPS private-LAN streams are supported. URL query parameters are supported, but embedded credentials and fragments are not; redirects and non-LAN destinations are rejected. Capture stops when no dashboard or Obico viewer has a lease.
+
+For an RTSP camera, select **IP camera (RTSP)** and enter the full camera-specific address, including credentials if needed: `rtsp://USERNAME:PASSWORD@IP_ADDRESS:554/stream_path`. The address must use a numeric private-LAN IP and a stream path. Port 554 is the usual RTSP default and may be omitted; the stream path is supplied by the camera maker (not every camera has `stream1` or `stream2`). Percent-encode reserved characters in credentials. The URL field clears after saving and a blank field retains the saved address. FabScreen stores network-camera URLs using the Android Keystore and does not return them from the dashboard status API. RTSP is decoded on the Artisan through ExoPlayer's RTSP source and the Android video decoder, then delivered as JPEG frames to the Camera page, Obico snapshots, and the existing WebRTC live-view bridge. **Output resolution** sets the JPEG dimensions up to 1920×1080; first-time RTSP setup defaults to 640×360 for a responsive preview, and higher sizes can be selected for snapshots or timelapses. It does not change the resolution of the stream sent by the camera. The Artisan H.264 decoder supports a camera input up to 1920×1088 (use at most 1920×1080 in the camera's own quality settings). A higher-resolution camera stream can fail before FabScreen can resize it. The preview frame-rate setting limits published JPEGs, not the camera's native RTSP frame rate. Higher output resolution uses more processor time; a lower frame rate is suitable for high-detail snapshots and timelapses. Capture stops when there are no viewers or Obico consumers. RTSP itself does not encrypt camera traffic, so use a trusted LAN and a dedicated camera account.
+
+MJPEG and RTSP addresses are saved separately. Switching to a USB camera or between IP camera types reuses each saved address without displaying its credentials again; enter a new address only to replace the saved one.
+
+On the web dashboard's **Camera** page, turn on **Show on Dashboard** to display a live camera view beside the print job. This is a browser preference, off by default; the Camera and Dashboard views share one capture session, which stops when neither view needs it.
+
+Obico connections require HTTPS. Printer tokens are kept in the Android Keystore and are never returned by the dashboard API or written to logs. Camera uploads and remote controls are disabled independently, and remote commands are state-checked, rate-limited, and deduplicated before reaching the machine. Treat the local FabScreen dashboard as a trusted-LAN interface: anyone who can open it already has access to printer controls and should not be considered an untrusted guest.
+
 ## Getting Started
 
 ### 1. Clone the repository

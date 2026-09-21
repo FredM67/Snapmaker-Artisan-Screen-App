@@ -47,6 +47,7 @@ import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -55,6 +56,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import fabscreen.platform.base.R;
+import fabscreen.platform.base.camera.UvcCameraManager;
 import fabscreen.platform.base.helper.Md5Util;
 import fabscreen.platform.base.instantiation.ServiceContainer;
 import fabscreen.platform.base.lib.file.FabLocalFile;
@@ -70,6 +72,7 @@ import fabscreen.platform.base.service.IAppService;
 import fabscreen.platform.base.service.IFileManagerService;
 import fabscreen.platform.base.service.IMachine;
 import fabscreen.platform.base.service.INetwork;
+import fabscreen.platform.base.service.IObicoService;
 import fabscreen.platform.base.service.IPreferences;
 import fabscreen.platform.base.service.IRouter;
 import fabscreen.platform.base.service.machine.MachineInfo;
@@ -105,6 +108,8 @@ class OrcaRequestHandler {
     private static final String URI_LOCAL_FILE = "/api/files/local";
     private static final String URI_CHECK_VERSION = "/api/version";
     private static final String URI_DASHBOARD_STATUS = "/api/dashboard/status";
+    private static final String URI_DASHBOARD_TELEMETRY_HISTORY =
+            "/api/dashboard/telemetry/history";
     private static final String URI_DASHBOARD_THUMBNAIL = "/api/dashboard/thumbnail";
     private static final String URI_DASHBOARD_PAUSE = "/api/dashboard/job/pause";
     private static final String URI_DASHBOARD_RESUME = "/api/dashboard/job/resume";
@@ -125,7 +130,21 @@ class OrcaRequestHandler {
     private static final String URI_DASHBOARD_ENCLOSURE = "/api/dashboard/enclosure";
     private static final String URI_DASHBOARD_ENCLOSURE_LED = "/api/dashboard/enclosure/led";
     private static final String URI_DASHBOARD_ENCLOSURE_FAN = "/api/dashboard/enclosure/fan";
+    private static final String URI_DASHBOARD_CAMERA_STATUS = "/api/dashboard/camera/status";
+    private static final String URI_DASHBOARD_CAMERA_SETTINGS = "/api/dashboard/camera/settings";
+    private static final String URI_DASHBOARD_CAMERA_RESCAN = "/api/dashboard/camera/rescan";
+    private static final String URI_DASHBOARD_CAMERA_FRAME = "/api/dashboard/camera/frame";
+    private static final String URI_DASHBOARD_CAMERA_STOP = "/api/dashboard/camera/stop";
+    private static final String URI_DASHBOARD_OBICO_CONFIG = "/api/dashboard/obico/config";
+    private static final String URI_DASHBOARD_OBICO_LINK = "/api/dashboard/obico/link";
+    private static final String URI_DASHBOARD_OBICO_TEST = "/api/dashboard/obico/test";
+    private static final String URI_DASHBOARD_OBICO_DISCONNECT = "/api/dashboard/obico/disconnect";
     private static final String URI_ROOT = "/";
+    private static final String URI_FAVICON_32 = "/favicon-32.png";
+    private static final String URI_APPLE_TOUCH_ICON = "/apple-touch-icon.png";
+    private static final String URI_ICON_192 = "/icon-192.png";
+    private static final String URI_ICON_512 = "/icon-512.png";
+    private static final String URI_WEB_MANIFEST = "/manifest.webmanifest";
     private static final String DASHBOARD_REQUEST_HEADER = "X-Artisan-Dashboard";
     private static final long TELEMETRY_REFRESH_INTERVAL_MS = 2_000L;
     private static final long ACTION_DEBOUNCE_MS = 1_000L;
@@ -135,7 +154,9 @@ class OrcaRequestHandler {
     private static final long MESH_TIMEOUT_MS = 15_000L;
     private static final long ENCLOSURE_CONTROL_TIMEOUT_MS = 5_000L;
     private static final long ENCLOSURE_REFRESH_TIMEOUT_MS = 3_000L;
+    private static final long THERMAL_REFRESH_TIMEOUT_MS = 10_000L;
     private static final long ENCLOSURE_TELEMETRY_MAX_AGE_MS = 30_000L;
+    private static final long CAMERA_FRAME_WAIT_MS = 2_000L;
     private static final long THERMAL_TELEMETRY_MAX_AGE_MS = 30_000L;
     private static final int MAX_CONSOLE_COMMAND_BYTES = 79;
     private static final int MAX_CONSOLE_RESPONSE_LENGTH = 128 * 1024;
@@ -166,13 +187,13 @@ class OrcaRequestHandler {
     private final String mDashboardToken = UUID.randomUUID().toString();
     private final Object mThumbnailLock = new Object();
     private final Object mActionLock = new Object();
-    private final Object mTelemetryLock = new Object();
+    private static final Object sTelemetryLock = new Object();
     private final Object mConsoleLock = new Object();
     private final Object mUploadLock = new Object();
     private final Object mFileDetailLock = new Object();
     private final Object mFileStartLock = new Object();
     private final Object mEnclosureControlLock = new Object();
-    private volatile long mLastTelemetryRefreshAt;
+    private static volatile long sLastTelemetryRefreshAt;
     private long mLastActionAt;
     private long mNextActionId;
     private long mPendingActionId;
@@ -183,9 +204,9 @@ class OrcaRequestHandler {
     private long mLastActionCompletedAt;
     private Disposable mDashboardActionDisposable;
     private Runnable mDashboardActionTimeout;
-    private Disposable mToolheadRefreshDisposable;
-    private Disposable mBedRefreshDisposable;
-    private Disposable mEnclosureRefreshDisposable;
+    private static Disposable sToolheadRefreshDisposable;
+    private static Disposable sBedRefreshDisposable;
+    private static Disposable sEnclosureRefreshDisposable;
     private Disposable mFirmwareLogDisposable;
     private Disposable mMeshCaptureDisposable;
     private Runnable mMeshTimeoutRunnable;
@@ -396,6 +417,54 @@ class OrcaRequestHandler {
         }
     }
 
+    @GetMapping(value = URI_FAVICON_32, produces = "image/png")
+    void getDashboardFavicon(HttpResponse response) {
+        writeDashboardStaticAsset(response, "artisan-icon-32.png", MediaType.IMAGE_PNG);
+    }
+
+    @GetMapping(value = URI_APPLE_TOUCH_ICON, produces = "image/png")
+    void getDashboardTouchIcon(HttpResponse response) {
+        writeDashboardStaticAsset(response, "artisan-icon-180.png", MediaType.IMAGE_PNG);
+    }
+
+    @GetMapping(value = URI_ICON_192, produces = "image/png")
+    void getDashboardIcon192(HttpResponse response) {
+        writeDashboardStaticAsset(response, "artisan-icon-192.png", MediaType.IMAGE_PNG);
+    }
+
+    @GetMapping(value = URI_ICON_512, produces = "image/png")
+    void getDashboardIcon512(HttpResponse response) {
+        writeDashboardStaticAsset(response, "artisan-icon-512.png", MediaType.IMAGE_PNG);
+    }
+
+    @GetMapping(value = URI_WEB_MANIFEST, produces = "application/manifest+json")
+    void getDashboardManifest(HttpResponse response) {
+        writeDashboardStaticAsset(response, "artisan.webmanifest",
+                MediaType.parseMediaType("application/manifest+json"));
+    }
+
+    private void writeDashboardStaticAsset(
+            HttpResponse response, String assetName, MediaType mediaType) {
+        response.setHeader("Cache-Control", "public, max-age=3600");
+        response.setHeader("X-Content-Type-Options", "nosniff");
+        try (InputStream input = ServiceContainer.getInstance().getService(IAppService.class)
+                .getAppContext().getAssets().open(assetName)) {
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+            byte[] buffer = new byte[8192];
+            int read;
+            while ((read = input.read(buffer)) != -1) {
+                output.write(buffer, 0, read);
+            }
+            byte[] content = output.toByteArray();
+            response.setStatus(StatusCode.SC_OK);
+            response.setBody(new StreamBody(
+                    new ByteArrayInputStream(content), content.length, mediaType));
+        } catch (IOException e) {
+            LogHelper.log(e);
+            response.setStatus(StatusCode.SC_INTERNAL_SERVER_ERROR);
+        }
+    }
+
     @GetMapping(path = URI_DASHBOARD_STATUS)
     void getDashboardStatus(HttpResponse response) {
         response.setHeader("Cache-Control", "no-store");
@@ -407,6 +476,20 @@ class OrcaRequestHandler {
         } catch (Exception e) {
             LogHelper.log(e);
             writeJsonError(response, StatusCode.SC_INTERNAL_SERVER_ERROR, "Unable to read printer status.");
+        }
+    }
+
+    @GetMapping(path = URI_DASHBOARD_TELEMETRY_HISTORY)
+    void getDashboardTelemetryHistory(HttpResponse response) {
+        response.setHeader("Cache-Control", "no-store");
+        response.setHeader("X-Content-Type-Options", "nosniff");
+        try {
+            writeJson(response, StatusCode.SC_OK,
+                    DashboardTelemetryHistory.getInstance().snapshot());
+        } catch (Exception e) {
+            LogHelper.log(e);
+            writeJsonError(response, StatusCode.SC_INTERNAL_SERVER_ERROR,
+                    "Unable to read telemetry history.");
         }
     }
 
@@ -1229,6 +1312,305 @@ class OrcaRequestHandler {
     @PostMapping(path = URI_DASHBOARD_ENCLOSURE_FAN)
     void setDashboardEnclosureFan(HttpRequest request, HttpResponse response) {
         handleDashboardEnclosureControl("fan", request, response);
+    }
+
+    @GetMapping(path = URI_DASHBOARD_CAMERA_STATUS)
+    void getDashboardCameraStatus(HttpRequest request, HttpResponse response) {
+        setDashboardApiHeaders(response);
+        if (!isDashboardRequestAuthorized(request)) {
+            writeJsonError(response, StatusCode.SC_FORBIDDEN, "Dashboard authorization failed.");
+            return;
+        }
+        try {
+            writeJson(response, StatusCode.SC_OK, dashboardCameraToJson(cameraManager()));
+        } catch (Exception error) {
+            LogHelper.log(error);
+            writeJsonError(response, StatusCode.SC_INTERNAL_SERVER_ERROR,
+                    "Unable to read USB camera status.");
+        }
+    }
+
+    @PostMapping(path = URI_DASHBOARD_CAMERA_SETTINGS)
+    void setDashboardCameraSettings(HttpRequest request, HttpResponse response) {
+        setDashboardApiHeaders(response);
+        if (!isDashboardRequestAuthorized(request)) {
+            writeJsonError(response, StatusCode.SC_FORBIDDEN, "Dashboard authorization failed.");
+            return;
+        }
+        DashboardCameraSettingsInput.Result input = DashboardCameraSettingsInput.parse(
+                request.getParameter("enabled"),
+                request.getParameter("source"),
+                request.getParameter("url"),
+                request.getParameter("width"),
+                request.getParameter("height"),
+                request.getParameter("fps")
+        );
+        if (!input.valid) {
+            writeJsonError(response, StatusCode.SC_BAD_REQUEST, input.error);
+            return;
+        }
+        try {
+            UvcCameraManager manager = cameraManager();
+            UvcCameraManager.ApplyResult result = manager.applySettings(
+                    input.enabled,
+                    input.sourceId,
+                    input.streamUrl,
+                    input.width,
+                    input.height,
+                    input.fps
+            );
+            if (!result.isSuccess()) {
+                writeJsonError(response, StatusCode.SC_BAD_REQUEST, result.getMessage());
+                return;
+            }
+            writeJson(response, StatusCode.SC_OK, dashboardCameraToJson(manager));
+        } catch (Exception error) {
+            LogHelper.log(error);
+            writeJsonError(response, StatusCode.SC_INTERNAL_SERVER_ERROR,
+                    "Unable to apply camera settings.");
+        }
+    }
+
+    @PostMapping(path = URI_DASHBOARD_CAMERA_RESCAN)
+    void rescanDashboardCameras(HttpRequest request, HttpResponse response) {
+        setDashboardApiHeaders(response);
+        if (!isDashboardRequestAuthorized(request)) {
+            writeJsonError(response, StatusCode.SC_FORBIDDEN, "Dashboard authorization failed.");
+            return;
+        }
+        try {
+            UvcCameraManager manager = cameraManager();
+            manager.rescan();
+            writeJson(response, StatusCode.SC_OK, dashboardCameraToJson(manager));
+        } catch (Exception error) {
+            LogHelper.log(error);
+            writeJsonError(response, StatusCode.SC_INTERNAL_SERVER_ERROR,
+                    "Unable to scan USB video devices.");
+        }
+    }
+
+    @GetMapping(path = URI_DASHBOARD_CAMERA_FRAME)
+    void getDashboardCameraFrame(HttpRequest request, HttpResponse response) {
+        setDashboardApiHeaders(response);
+        if (!isDashboardRequestAuthorized(request)) {
+            writeJsonError(response, StatusCode.SC_FORBIDDEN, "Dashboard authorization failed.");
+            return;
+        }
+        Long afterSequence = parseNonNegativeLong(request.getParameter("after"));
+        if (afterSequence == null) {
+            writeJsonError(response, StatusCode.SC_BAD_REQUEST,
+                    "Parameter after must be a non-negative integer.");
+            return;
+        }
+        String clientId = parseDashboardCameraClientId(request.getParameter("client"));
+        if (clientId == null) {
+            writeJsonError(response, StatusCode.SC_BAD_REQUEST,
+                    "Parameter client must be a valid camera session identifier.");
+            return;
+        }
+        try {
+            UvcCameraManager.Frame frame = cameraManager().awaitFrame(
+                    clientId,
+                    afterSequence,
+                    CAMERA_FRAME_WAIT_MS
+            );
+            if (frame == null || frame.getJpeg() == null || frame.getJpeg().length == 0) {
+                response.setStatus(StatusCode.SC_NO_CONTENT);
+                return;
+            }
+            byte[] jpeg = frame.getJpeg();
+            response.setHeader("X-Artisan-Camera-Sequence", String.valueOf(frame.getSequence()));
+            response.setHeader("X-Artisan-Camera-Timestamp", String.valueOf(frame.getTimestampMs()));
+            response.setStatus(StatusCode.SC_OK);
+            response.setBody(new StreamBody(
+                    new ByteArrayInputStream(jpeg),
+                    jpeg.length,
+                    MediaType.IMAGE_JPEG
+            ));
+        } catch (Exception error) {
+            LogHelper.log(error);
+            writeJsonError(response, StatusCode.SC_SERVICE_UNAVAILABLE,
+                    "Camera frame is temporarily unavailable.");
+        }
+    }
+
+    @PostMapping(path = URI_DASHBOARD_CAMERA_STOP)
+    void stopDashboardCamera(HttpRequest request, HttpResponse response) {
+        setDashboardApiHeaders(response);
+        if (!isDashboardRequestAuthorized(request)) {
+            writeJsonError(response, StatusCode.SC_FORBIDDEN, "Dashboard authorization failed.");
+            return;
+        }
+        String clientId = parseDashboardCameraClientId(request.getParameter("client"));
+        if (clientId == null) {
+            writeJsonError(response, StatusCode.SC_BAD_REQUEST,
+                    "Parameter client must be a valid camera session identifier.");
+            return;
+        }
+        try {
+            UvcCameraManager manager = cameraManager();
+            manager.releaseClient(clientId);
+            writeJson(response, StatusCode.SC_OK, dashboardCameraToJson(manager));
+        } catch (Exception error) {
+            LogHelper.log(error);
+            writeJsonError(response, StatusCode.SC_INTERNAL_SERVER_ERROR,
+                    "Unable to release the camera.");
+        }
+    }
+
+    @GetMapping(path = URI_DASHBOARD_OBICO_CONFIG)
+    void getDashboardObicoConfig(HttpRequest request, HttpResponse response) {
+        setDashboardApiHeaders(response);
+        if (!isDashboardRequestAuthorized(request)) {
+            writeJsonError(response, StatusCode.SC_FORBIDDEN, "Dashboard authorization failed.");
+            return;
+        }
+        try {
+            IObicoService service = obicoService();
+            if (service == null) {
+                writeJsonError(response, StatusCode.SC_SERVICE_UNAVAILABLE,
+                        "Obico integration is unavailable in this build.");
+                return;
+            }
+            writeObicoResult(
+                    response,
+                    service.getPublicStateJson(),
+                    StatusCode.SC_INTERNAL_SERVER_ERROR
+            );
+        } catch (Exception error) {
+            LogHelper.log(error);
+            writeJsonError(response, StatusCode.SC_INTERNAL_SERVER_ERROR,
+                    "Unable to read Obico configuration.");
+        }
+    }
+
+    @PostMapping(path = URI_DASHBOARD_OBICO_CONFIG)
+    void setDashboardObicoConfig(HttpRequest request, HttpResponse response) {
+        setDashboardApiHeaders(response);
+        if (!isDashboardRequestAuthorized(request)) {
+            writeJsonError(response, StatusCode.SC_FORBIDDEN, "Dashboard authorization failed.");
+            return;
+        }
+
+        DashboardObicoSettingsInput.Result parsed = DashboardObicoSettingsInput.parse(
+                request.getParameter("enabled"),
+                request.getParameter("serverUrl"),
+                request.getParameter("allowInsecureServer"),
+                request.getParameter("remoteControlEnabled"),
+                request.getParameter("cameraUploadsEnabled")
+        );
+        if (!parsed.valid) {
+            writeJsonError(response, StatusCode.SC_BAD_REQUEST, parsed.error);
+            return;
+        }
+
+        try {
+            IObicoService service = obicoService();
+            if (service == null) {
+                writeJsonError(response, StatusCode.SC_SERVICE_UNAVAILABLE,
+                        "Obico integration is unavailable in this build.");
+                return;
+            }
+            JSONObject input = new JSONObject();
+            input.put("enabled", parsed.enabled);
+            input.put("serverUrl", parsed.serverUrl);
+            input.put("allowInsecureServer", parsed.allowInsecureServer);
+            input.put("remoteControlEnabled", parsed.remoteControlEnabled);
+            input.put("cameraUploadsEnabled", parsed.cameraUploadsEnabled);
+            writeObicoResult(
+                    response,
+                    service.applyConfiguration(input),
+                    StatusCode.SC_BAD_REQUEST
+            );
+        } catch (Exception error) {
+            LogHelper.log(error);
+            writeJsonError(response, StatusCode.SC_INTERNAL_SERVER_ERROR,
+                    "Unable to save Obico configuration.");
+        }
+    }
+
+    @PostMapping(path = URI_DASHBOARD_OBICO_LINK)
+    void linkDashboardObico(HttpRequest request, HttpResponse response) {
+        setDashboardApiHeaders(response);
+        if (!isDashboardRequestAuthorized(request)) {
+            writeJsonError(response, StatusCode.SC_FORBIDDEN, "Dashboard authorization failed.");
+            return;
+        }
+        DashboardObicoSettingsInput.LinkCodeResult parsed =
+                DashboardObicoSettingsInput.parseLinkCode(request.getParameter("code"));
+        if (!parsed.valid) {
+            writeJsonError(response, StatusCode.SC_BAD_REQUEST, parsed.error);
+            return;
+        }
+        try {
+            IObicoService service = obicoService();
+            if (service == null) {
+                writeJsonError(response, StatusCode.SC_SERVICE_UNAVAILABLE,
+                        "Obico integration is unavailable in this build.");
+                return;
+            }
+            writeObicoResult(
+                    response,
+                    service.beginLink(parsed.code),
+                    StatusCode.SC_BAD_REQUEST
+            );
+        } catch (Exception error) {
+            LogHelper.log(error);
+            writeJsonError(response, StatusCode.SC_INTERNAL_SERVER_ERROR,
+                    "Unable to start Obico linking.");
+        }
+    }
+
+    @PostMapping(path = URI_DASHBOARD_OBICO_TEST)
+    void testDashboardObico(HttpRequest request, HttpResponse response) {
+        setDashboardApiHeaders(response);
+        if (!isDashboardRequestAuthorized(request)) {
+            writeJsonError(response, StatusCode.SC_FORBIDDEN, "Dashboard authorization failed.");
+            return;
+        }
+        try {
+            IObicoService service = obicoService();
+            if (service == null) {
+                writeJsonError(response, StatusCode.SC_SERVICE_UNAVAILABLE,
+                        "Obico integration is unavailable in this build.");
+                return;
+            }
+            writeObicoResult(
+                    response,
+                    service.testConnection(),
+                    StatusCode.SC_SERVICE_UNAVAILABLE
+            );
+        } catch (Exception error) {
+            LogHelper.log(error);
+            writeJsonError(response, StatusCode.SC_INTERNAL_SERVER_ERROR,
+                    "Unable to test the Obico connection.");
+        }
+    }
+
+    @PostMapping(path = URI_DASHBOARD_OBICO_DISCONNECT)
+    void disconnectDashboardObico(HttpRequest request, HttpResponse response) {
+        setDashboardApiHeaders(response);
+        if (!isDashboardRequestAuthorized(request)) {
+            writeJsonError(response, StatusCode.SC_FORBIDDEN, "Dashboard authorization failed.");
+            return;
+        }
+        try {
+            IObicoService service = obicoService();
+            if (service == null) {
+                writeJsonError(response, StatusCode.SC_SERVICE_UNAVAILABLE,
+                        "Obico integration is unavailable in this build.");
+                return;
+            }
+            writeObicoResult(
+                    response,
+                    service.disconnect(),
+                    StatusCode.SC_INTERNAL_SERVER_ERROR
+            );
+        } catch (Exception error) {
+            LogHelper.log(error);
+            writeJsonError(response, StatusCode.SC_INTERNAL_SERVER_ERROR,
+                    "Unable to unlink FabScreen from Obico.");
+        }
     }
 
     private void collectLocalGcodeFiles(
@@ -2334,6 +2716,32 @@ class OrcaRequestHandler {
         } catch (NumberFormatException ignored) {
             return null;
         }
+    }
+
+    private Long parseNonNegativeLong(String value) {
+        if (TextUtils.isEmpty(value)) return 0L;
+        for (int index = 0; index < value.length(); index++) {
+            if (!Character.isDigit(value.charAt(index))) return null;
+        }
+        try {
+            long parsed = Long.parseLong(value);
+            return parsed >= 0L ? parsed : null;
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private String parseDashboardCameraClientId(String value) {
+        if (TextUtils.isEmpty(value) || value.length() > 64) return null;
+        for (int index = 0; index < value.length(); index++) {
+            char current = value.charAt(index);
+            boolean allowed = (current >= 'a' && current <= 'z')
+                    || (current >= 'A' && current <= 'Z')
+                    || (current >= '0' && current <= '9')
+                    || current == '.' || current == '_' || current == '~' || current == '-';
+            if (!allowed) return null;
+        }
+        return value;
     }
 
     private String dashboardFileStartPreflight(
@@ -4181,6 +4589,7 @@ class OrcaRequestHandler {
                     return;
                 }
                 mEnclosureControlPending = true;
+                DashboardTelemetryHistory.getInstance().setEnclosureControlPending(true);
                 requestId = ++mNextEnclosureControlId;
                 mEnclosureControlId = requestId;
                 mEnclosureControlTarget = target;
@@ -4292,7 +4701,7 @@ class OrcaRequestHandler {
 
         try {
             Observable<ResponseStructure> operation = "led".equals(target)
-                    ? enclosure.setEnclosureLedLevel(percent)
+                    ? enclosure.setEnclosureLedLevelByUser(percent)
                     : enclosure.setEnclosureFanLevel(percent);
             Disposable disposable = operation
                     .timeout(ENCLOSURE_CONTROL_TIMEOUT_MS, TimeUnit.MILLISECONDS)
@@ -4390,6 +4799,7 @@ class OrcaRequestHandler {
         synchronized (mEnclosureControlLock) {
             if (!mEnclosureControlPending || mEnclosureControlId != requestId) return;
             mEnclosureControlPending = false;
+            DashboardTelemetryHistory.getInstance().setEnclosureControlPending(false);
             mEnclosureControlResult = result;
             mEnclosureControlError = error;
             mEnclosureControlErrorCode = errorCode;
@@ -4409,6 +4819,170 @@ class OrcaRequestHandler {
     private void setDashboardApiHeaders(HttpResponse response) {
         response.setHeader("Cache-Control", "no-store");
         response.setHeader("X-Content-Type-Options", "nosniff");
+    }
+
+    private UvcCameraManager cameraManager() {
+        Context context = ServiceContainer.getInstance()
+                .getService(IAppService.class)
+                .getAppContext();
+        return UvcCameraManager.getInstance(context);
+    }
+
+    private IObicoService obicoService() {
+        return ServiceContainer.getInstance().getService(IObicoService.class);
+    }
+
+    /**
+     * Treats the manager response as untrusted at this HTTP boundary. Even if a
+     * future manager DTO accidentally includes a credential, it must not reach
+     * a browser or server log through the dashboard API.
+     */
+    private void writeObicoResult(
+            HttpResponse response,
+            JSONObject result,
+            int failureStatus
+    ) throws JSONException {
+        if (result == null) {
+            writeJsonError(response, failureStatus, "Obico did not return a response.");
+            return;
+        }
+        JSONObject publicResult = sanitizeObicoObject(result);
+        writeJson(
+                response,
+                publicResult.optBoolean("ok", true) ? StatusCode.SC_OK : failureStatus,
+                publicResult
+        );
+    }
+
+    private JSONObject sanitizeObicoObject(JSONObject source) throws JSONException {
+        JSONObject sanitized = new JSONObject();
+        Iterator<String> keys = source.keys();
+        while (keys.hasNext()) {
+            String key = keys.next();
+            if (isSensitiveObicoKey(key)) continue;
+            Object value = source.opt(key);
+            if (value instanceof JSONObject) {
+                value = sanitizeObicoObject((JSONObject) value);
+            } else if (value instanceof JSONArray) {
+                value = sanitizeObicoArray((JSONArray) value);
+            }
+            sanitized.put(key, value == null ? JSONObject.NULL : value);
+        }
+        return sanitized;
+    }
+
+    private JSONArray sanitizeObicoArray(JSONArray source) throws JSONException {
+        JSONArray sanitized = new JSONArray();
+        for (int index = 0; index < source.length(); index++) {
+            Object value = source.opt(index);
+            if (value instanceof JSONObject) {
+                value = sanitizeObicoObject((JSONObject) value);
+            } else if (value instanceof JSONArray) {
+                value = sanitizeObicoArray((JSONArray) value);
+            }
+            sanitized.put(value == null ? JSONObject.NULL : value);
+        }
+        return sanitized;
+    }
+
+    private boolean isSensitiveObicoKey(String key) {
+        if (key == null) return false;
+        String normalized = key.toLowerCase(Locale.US);
+        return normalized.contains("token")
+                || normalized.contains("secret")
+                || normalized.contains("password")
+                || normalized.contains("credential");
+    }
+
+    private JSONObject dashboardCameraToJson(UvcCameraManager manager) throws JSONException {
+        UvcCameraManager.Settings settings = manager.getSettings();
+        UvcCameraManager.Status status = manager.getStatus();
+        List<UvcCameraManager.Source> sources = manager.getSources();
+
+        JSONObject root = new JSONObject();
+        root.put("ok", true);
+        root.put("timestamp", System.currentTimeMillis());
+        root.put("nativeAvailable", status.isNativeAvailable());
+
+        JSONObject settingsJson = new JSONObject();
+        settingsJson.put("enabled", settings.isEnabled());
+        settingsJson.put("sourceId", emptyIfNull(settings.getSourceId()));
+        // Stream URLs may contain credentials. Return presence only, never the saved URL.
+        settingsJson.put("streamUrlConfigured", settings.hasStreamUrl());
+        settingsJson.put("mjpegUrlConfigured",
+                manager.hasSavedStreamUrl(UvcCameraManager.MJPEG_SOURCE_ID));
+        settingsJson.put("rtspUrlConfigured",
+                manager.hasSavedStreamUrl(UvcCameraManager.RTSP_SOURCE_ID));
+        settingsJson.put("width", settings.getWidth());
+        settingsJson.put("height", settings.getHeight());
+        settingsJson.put("fps", settings.getFps());
+        root.put("settings", settingsJson);
+
+        JSONObject statusJson = new JSONObject();
+        statusJson.put("nativeAvailable", status.isNativeAvailable());
+        statusJson.put("enabled", status.isEnabled());
+        statusJson.put("active", status.isActive());
+        statusJson.put("running", status.isRunning());
+        statusJson.put("state", emptyIfNull(status.getState()));
+        statusJson.put("message", emptyIfNull(status.getMessage()));
+        statusJson.put("selectedSourceId", emptyIfNull(status.getSelectedSourceId()));
+        statusJson.put("activeSourceId", emptyIfNull(status.getActiveSourceId()));
+        statusJson.put("activeSourceName", emptyIfNull(status.getActiveSourceName()));
+        statusJson.put("requestedWidth", status.getRequestedWidth());
+        statusJson.put("requestedHeight", status.getRequestedHeight());
+        statusJson.put("requestedFps", status.getRequestedFps());
+        statusJson.put("actualWidth", status.getActualWidth());
+        statusJson.put("actualHeight", status.getActualHeight());
+        statusJson.put("actualFps", status.getActualFps());
+        statusJson.put("format", emptyIfNull(status.getFormat()));
+        statusJson.put("sequence", status.getSequence());
+        statusJson.put("lastFrameAt", status.getLastFrameAt());
+        statusJson.put("error", emptyIfNull(status.getError()));
+        statusJson.put("clientCount", status.getClientCount());
+        root.put("status", statusJson);
+
+        JSONArray sourceJson = new JSONArray();
+        for (UvcCameraManager.Source source : sources) {
+            JSONObject item = new JSONObject();
+            item.put("id", emptyIfNull(source.getStableId()));
+            item.put("stableId", emptyIfNull(source.getStableId()));
+            item.put("name", emptyIfNull(source.getDisplayName()));
+            item.put("displayName", emptyIfNull(source.getDisplayName()));
+            item.put("width", source.getWidth());
+            item.put("height", source.getHeight());
+            item.put("format", emptyIfNull(source.getFormat()));
+            item.put("compressed", source.isCompressed());
+            sourceJson.put(item);
+        }
+        root.put("sources", sourceJson);
+        return root;
+    }
+
+    /** Graph-only snapshot: does not inspect print files, build job details, or use network APIs. */
+    JSONObject buildDashboardTelemetrySample(IMachine machine) throws JSONException {
+        long sampledAt = System.currentTimeMillis();
+        MachineInfo info = machine.getMachineInfoSubjectHolder().getValue();
+        MachineStatus status = machine.getMachineStatusSubjectHolder().getValue();
+        boolean connected = status != null && status.connected;
+        boolean isFdm = info != null && info.moduleList != null
+                && info.workType == IMachine.WorkType.FDM;
+        FdmToolhead.FdmToolheadStatus fdmStatus = getFdmStatus(machine, isFdm);
+        HeatedBed heatedBed = findModule(info, HeatedBed.class);
+        Enclosure enclosure = findModule(info, Enclosure.class);
+
+        JSONObject sample = new JSONObject();
+        sample.put("timestamp", sampledAt);
+        JSONObject machineJson = new JSONObject();
+        machineJson.put("connected", connected);
+        machineJson.put("isFdm", isFdm);
+        sample.put("machine", machineJson);
+        JSONObject toolhead = buildToolheadJson(machine, fdmStatus, isFdm,
+                connected, sampledAt);
+        sample.put("toolhead", toolhead);
+        sample.put("bed", buildBedJson(info, heatedBed, connected, sampledAt));
+        sample.put("cooling", buildCoolingJson(toolhead, info, enclosure,
+                connected, sampledAt));
+        return sample;
     }
 
     private JSONObject buildDashboardStatus(IMachine machine) throws JSONException {
@@ -5236,7 +5810,7 @@ class OrcaRequestHandler {
         if (timeout != null) mMainHandler.removeCallbacks(timeout);
     }
 
-    private void maybeRefreshTelemetry(IMachine machine) {
+    void maybeRefreshTelemetry(IMachine machine) {
         MachineInfo info = machine.getMachineInfoSubjectHolder().getValue();
         MachineStatus status = machine.getMachineStatusSubjectHolder().getValue();
         if (info == null
@@ -5247,9 +5821,9 @@ class OrcaRequestHandler {
         }
 
         long now = SystemClock.elapsedRealtime();
-        synchronized (mTelemetryLock) {
-            if (now - mLastTelemetryRefreshAt < TELEMETRY_REFRESH_INTERVAL_MS) return;
-            mLastTelemetryRefreshAt = now;
+        synchronized (sTelemetryLock) {
+            if (now - sLastTelemetryRefreshAt < TELEMETRY_REFRESH_INTERVAL_MS) return;
+            sLastTelemetryRefreshAt = now;
         }
 
         mMainHandler.post(() -> {
@@ -5258,31 +5832,35 @@ class OrcaRequestHandler {
                 if (fdmController != null && fdmController.getToolHeadCounts() > 0) {
                     FdmToolhead toolhead = fdmController.getFdmToolhead(0);
                     if (toolhead != null
-                            && (mToolheadRefreshDisposable == null
-                            || mToolheadRefreshDisposable.isDisposed())) {
-                        mToolheadRefreshDisposable = toolhead.requestInfo().subscribe(ignored -> {
-                        }, LogHelper::log);
+                            && (sToolheadRefreshDisposable == null
+                            || sToolheadRefreshDisposable.isDisposed())) {
+                        sToolheadRefreshDisposable = toolhead.requestInfo()
+                                .timeout(THERMAL_REFRESH_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+                                .take(1)
+                                .subscribe(ignored -> {
+                                }, LogHelper::log);
                     }
                 }
 
                 MachineInfo latestInfo = machine.getMachineInfoSubjectHolder().getValue();
                 HeatedBed heatedBed = findModule(latestInfo, HeatedBed.class);
                 if (heatedBed != null
-                        && (mBedRefreshDisposable == null || mBedRefreshDisposable.isDisposed())) {
-                    mBedRefreshDisposable = heatedBed.requestInfo().subscribe(ignored -> {
-                    }, LogHelper::log);
+                        && (sBedRefreshDisposable == null || sBedRefreshDisposable.isDisposed())) {
+                    sBedRefreshDisposable = heatedBed.requestInfo()
+                            .timeout(THERMAL_REFRESH_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+                            .take(1)
+                            .subscribe(ignored -> {
+                            }, LogHelper::log);
                 }
 
-                boolean enclosureControlPending;
-                synchronized (mEnclosureControlLock) {
-                    enclosureControlPending = mEnclosureControlPending;
-                }
+                boolean enclosureControlPending = DashboardTelemetryHistory.getInstance()
+                        .isEnclosureControlPending();
                 Enclosure enclosure = findModule(latestInfo, Enclosure.class);
                 if (enclosure != null
                         && !enclosureControlPending
-                        && (mEnclosureRefreshDisposable == null
-                        || mEnclosureRefreshDisposable.isDisposed())) {
-                    mEnclosureRefreshDisposable = enclosure.requestInfo()
+                        && (sEnclosureRefreshDisposable == null
+                        || sEnclosureRefreshDisposable.isDisposed())) {
+                    sEnclosureRefreshDisposable = enclosure.requestInfo()
                             .timeout(ENCLOSURE_REFRESH_TIMEOUT_MS, TimeUnit.MILLISECONDS)
                             .take(1)
                             .subscribe(ignored -> {

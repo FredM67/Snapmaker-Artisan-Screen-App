@@ -34,7 +34,7 @@ public class A400EnclosureControlViewModel extends BaseViewModel {
 
     public void setLedLevel(int value) {
         ServiceContainer.getInstance().getService(IMachine.class).getMachineController().getEnclosure()
-                .setEnclosureLedLevel(value)
+                .setEnclosureLedLevelByUser(value)
                 .as(bindToLifecycle())
                 .subscribe(ret -> {/**/}, LogHelper::log);
     }
